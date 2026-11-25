@@ -20,7 +20,7 @@ from .ceiling import (InfeasibleAboveInstanceCeiling, ceiling_by_product,
                       ceiling_by_scan, ceiling_census, instance_ceiling)
 from .coverage import coverage_census, drift_radius, drift_tolerance, witness_margin
 from .lattice import universe
-from .pricing import price_form_census, price_form_sweep
+from .pricing import exactness_frontier, price_form_census, price_form_sweep
 from .solve import InfeasibleWithinBudget, ladder, solve_lattice_schedule
 
 RC_OK = 0
@@ -213,6 +213,25 @@ def _print_price_sweep(low: int, high: int, as_json: bool) -> int:
     return RC_OK
 
 
+def _print_frontier(max_period: int, as_json: bool) -> int:
+    data = exactness_frontier(max_period)
+    if as_json:
+        print(json.dumps({**data, "witness": list(data["witness"])},
+                         indent=2, sort_keys=True))
+        return RC_OK
+    if data["period"] is None:
+        print(f"even periods 2..{max_period}: the closed form is the price"
+              f" on every one of the {data['scanned']} censused")
+        return RC_OK
+    print(f"even periods 2..{max_period}: {data['breaks']} of"
+          f" {data['scanned']} mispriced, first at T = {data['period']}")
+    print(f"  witness                    {data['witness']}")
+    print(f"  closed form                {data['bound']} points")
+    print(f"  one grid {data['grid']:<18}{data['cover']} points")
+    print(f"  saving                     {data['saving']} points")
+    return RC_OK
+
+
 def _self_test() -> int:
     """A handful of claims the package makes, checked in-process."""
     ok = True
@@ -319,6 +338,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_prices = sub.add_parser("prices", help="the same census over a window of periods")
     p_prices.add_argument("low", type=int, nargs="?", default=2)
     p_prices.add_argument("high", type=int, nargs="?", default=400)
+
+    p_frontier = sub.add_parser(
+        "frontier", help="the first period the closed form misprices")
+    p_frontier.add_argument("--max-period", type=int, default=8000)
     return parser
 
 
@@ -351,6 +374,8 @@ def main(argv: list[str] | None = None) -> int:
             return _print_price(args.period, args.json)
         if args.command == "prices":
             return _print_price_sweep(args.low, args.high, args.json)
+        if args.command == "frontier":
+            return _print_frontier(args.max_period, args.json)
     except ValueError as exc:
         print(f"BAD_REQUEST: {exc}", file=sys.stderr)
         return RC_BAD_REQUEST

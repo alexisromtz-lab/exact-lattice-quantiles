@@ -191,6 +191,27 @@ even periods 2..400 over reduced: 200 censused
   skipped (unaffordable)     0
 ```
 
+200/200 over `2..400` is a bounded census, not a law. The shortcut breaks the
+moment a block of three grids enters `U(T)`: `{6m, 10m, 15m}` has lcm `30m`,
+so it costs `15m + floor(m/2)` bought apart and `15m` bought whole, and the
+deficit is `floor(m/2)` -- zero at `m = 1`, which is why the frontier is not
+period 2. The first mispriced period is `T = 1080`, with the witness
+`{54, 90, 135}` costing `139` apart and `135` as the single grid `270`:
+
+```
+$ exact-lattice-quantiles frontier
+even periods 2..8000: 16 of 4000 mispriced, first at T = 1080
+  witness                    (54, 90, 135)
+  closed form                139 points
+  one grid 270               135 points
+  saving                     4 points
+```
+
+Below that boundary the formula *is* the price over `U(T)`, and the theorem is
+sharp: `16` breaks, `16` triples, no break without a triple and no triple
+without a break. Divisibility by `30` is necessary and not sufficient -- `840`
+holds `12` and `20` but not `30`, so it is exact.
+
 So the library never prices with the formula: `price_exact` is a subset DP over
 the coverage masks, and `price_form_census` publishes how often the shortcut
 agrees. Restricting the universe to `U(T)` is what makes the shortcut look
