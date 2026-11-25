@@ -30,6 +30,20 @@ def load() -> dict:
     return json.loads(shipped_manifest().read_text(encoding="utf-8"))
 
 
+def anchor_of(anchors: list, period: int, kind: str, **extra) -> dict:
+    """The anchor with that subject, found by what it is rather than where it sits.
+
+    A test that picks its anchor by index silently retargets the day an anchor
+    is inserted above it, and then it measures a different claim.
+    """
+    found = [x for x in anchors
+             if x.get("period") == period and x["kind"] == kind
+             and all(x.get(k) == v for k, v in extra.items())]
+    if len(found) != 1:
+        raise AssertionError(f"expected one {kind} anchor for {period}{extra}, got {len(found)}")
+    return found[0]
+
+
 def with_anchor(mutate) -> dict:
     data = load()
     mutate(data["anchors"])
@@ -58,7 +72,7 @@ class TestTheShippedManifest(unittest.TestCase):
 
 class TestADivergenceNamesTheField(unittest.TestCase):
     def test_a_wrong_margin_is_caught_at_the_ceiling_and_nowhere_else(self):
-        data = with_anchor(lambda a: a[5].update({"margin": "5/16"}))
+        data = with_anchor(lambda a: anchor_of(a, 180, "ceiling").update({"margin": "5/16"}))
         divergent = [c for c in verify_manifest(data) if not c.ok]
         self.assertEqual(len(divergent), 1)
         self.assertEqual((divergent[0].kind, divergent[0].field),
@@ -68,19 +82,21 @@ class TestADivergenceNamesTheField(unittest.TestCase):
         self.assertIn("ceiling.margin", str(divergent[0]))
 
     def test_a_wrong_cost_names_cost_not_margin(self):
-        data = with_anchor(lambda a: a[5].update({"cost_cover": 46}))
+        data = with_anchor(lambda a: anchor_of(a, 180, "ceiling").update({"cost_cover": 46}))
         divergent = [c for c in verify_manifest(data) if not c.ok]
         self.assertEqual([c.field for c in divergent], ["cost_cover"])
         self.assertEqual(divergent[0].measured, 47)
 
     def test_a_design_above_the_ceiling_diverges_instead_of_crashing(self):
-        data = with_anchor(lambda a: a[18].update({"margin": "2/5"}))
+        data = with_anchor(lambda a: anchor_of(a, 180, "design",
+                                              max_cost=64).update({"margin": "2/5"}))
         divergent = [c for c in verify_manifest(data) if not c.ok]
         self.assertEqual([c.field for c in divergent], ["feasible"])
         self.assertIn("infeasible", str(divergent[0].measured))
 
     def test_a_moved_frontier_is_caught(self):
-        data = with_anchor(lambda a: a[20].update({"period": 1082}))
+        data = with_anchor(
+            lambda a: anchor_of(a, 1080, "frontier").update({"period": 1082}))
         divergent = [c for c in verify_manifest(data) if not c.ok]
         self.assertEqual([(c.field, c.measured) for c in divergent],
                          [("period", 1080)])
