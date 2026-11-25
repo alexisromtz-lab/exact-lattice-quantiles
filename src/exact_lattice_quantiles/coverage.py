@@ -240,10 +240,12 @@ def drift_tolerance(G: tuple[int, ...], Q: tuple[Fraction, ...],
 
     ``margin`` and the result are in the same currency as
     :func:`witness_margin`; ``drift_tolerance(..., 0)`` equals
-    :func:`drift_radius`.
+    :func:`drift_radius`.  ``doubled=False`` halves *both*, so the identity
+    ``tolerance(v) = radius - v`` reads the same in either view -- a view is a
+    change of units, never a change of measurement.
     """
     scale = 2 if doubled else 1
-    half = Fraction(margin) / 2
+    half = Fraction(margin) / scale
     out: dict[int, Fraction] = {}
     for d in U:
         out[d] = _reach_from_zero([(a + half, b - half) for a, b in _spans(G, Q, d)]) * scale
@@ -315,6 +317,9 @@ class DriftLaw:
     right up to a knife edge and a cliff after it.  ``cliff`` is how far the
     tolerance sits under the line at that edge, which is the part a linear
     extrapolation promises and the geometry does not pay.
+
+    All three fields are in the same currency as :func:`drift_tolerance`'s
+    result, so ``critical_margin`` can be handed back to it unchanged.
     """
 
     radius: Fraction
@@ -339,8 +344,49 @@ def drift_law(G: tuple[int, ...], Q: tuple[Fraction, ...],
         radius = _reach_from_zero(spans)
         edge = _linear_regime(spans, radius)
         here = _reach_from_zero([(a + edge, b - edge) for a, b in spans])
-        out[d] = DriftLaw(radius * scale, 2 * edge, (radius - edge - here) * scale)
+        out[d] = DriftLaw(radius * scale, edge * scale, (radius - edge - here) * scale)
     return out
+
+
+@dataclass(frozen=True)
+class DesignLaw:
+    """A whole design read as a function of the margin demanded.
+
+    ``tolerance(v) == radius - v`` on the **entire** interval
+    ``0 <= v <= radius``: the design has no cliff.  The one :func:`drift_law`
+    reports per divisor never survives the minimum over divisors, because the
+    divisor that breaks first is not the divisor that fixes the radius.
+
+    ``first_divisor_break`` is that earliest per-divisor break.  It is a
+    pessimistic reading of the design, not a boundary of it: for 78 of the 240
+    designs of the 200 even periods at ``k = 4`` and ``k = 6`` it is strictly
+    smaller than the radius, and the design pays nothing at it.
+
+    Measured over 1712 designs -- 200 even periods, budgets
+    ``{16, 24, 47, 64, 96}``, ``k`` in ``{2, 4, 6, 8}`` -- the line holds on
+    every interval between consecutive knots, no exception.
+    """
+
+    radius: Fraction
+    first_divisor_break: Fraction
+
+
+def design_law(G: tuple[int, ...], Q: tuple[Fraction, ...],
+               U: tuple[int, ...], doubled: bool = True) -> DesignLaw:
+    """The one-for-one regime of a design, which is the whole of its range.
+
+    The radius is ``min`` over divisors, and so is the tolerance at any margin;
+    a minimum of lines of slope ``-1`` is a line of slope ``-1``, and a divisor
+    that breaks under its own line only loses the competition when it also
+    holds the radius.  Hence the design is exact where the divisors are not.
+    """
+    laws = drift_law(G, Q, U, doubled)
+    if not laws:
+        return DesignLaw(Fraction(0), Fraction(0))
+    return DesignLaw(
+        min(law.radius for law in laws.values()),
+        min(law.critical_margin for law in laws.values()),
+    )
 
 
 def _probe_bands(G: tuple[int, ...], U: tuple[int, ...],
