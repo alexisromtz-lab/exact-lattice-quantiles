@@ -48,17 +48,22 @@ from .pricing import (PriceFormCensus, antichain_saving_ceiling,
                       block_dominance_census, block_of, block_saving,
                       carrier_block_of, carrier_block_saving,
                       exactness_frontier, frontier_by_blocks,
-                      maximal_divisors, price_exact, price_form_census,
-                      price_form_sweep, price_one_per_maximal)
+                      maximal_divisors, pair_antichain_of,
+                      pair_antichain_saving, price_exact, price_form_census,
+                      price_form_sweep, price_one_per_maximal,
+                      strong_lemma_frontier)
 from .solve import (OK, PROBES_INSUFFICIENT, InfeasibleWithinBudget, Schedule,
                     ladder, solve_lattice_schedule)
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 __all__ = [
     "Ceiling",
     "antichain_saving_ceiling",
     "block_dominance_census",
+    "pair_antichain_of",
+    "pair_antichain_saving",
+    "strong_lemma_frontier",
     "InfeasibleAboveInstanceCeiling",
     "InfeasibleWithinBudget",
     "OK",

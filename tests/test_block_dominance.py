@@ -14,10 +14,17 @@ grid their least common multiple names, and that grid's own block is the
 cheapest way to buy it whole.  With the lemma, a cover built from parts never
 beats paying the parts, so no block saving means the closed form is optimal.
 
-The lemma is measured here, not proved.  What the tests pin is that it is
-checked rather than assumed: ``block_dominance_census`` recomputes the ceiling
-for every least common multiple in range, and a counterexample arrives as a
-failing test instead of a rumour.
+Read as a ranking -- the block saves *most* among the antichains it shares a
+least common multiple with -- the lemma is false, and ``1049`` is the prime
+that says so: on the primorial of the first 176 primes the pair antichain wins
+(see ``test_strong_lemma_frontier``).  What the law uses is the weaker **sign**
+reading, that no antichain saves where no block does, and that one is measured
+here, not proved.
+
+What the tests pin is that it is checked rather than assumed:
+``block_dominance_census`` recomputes the ceiling for every least common
+multiple in range, and a counterexample arrives as a failing test instead of a
+rumour.
 """
 
 import unittest
@@ -59,6 +66,12 @@ class TheBlockCarriesEverySaving(unittest.TestCase):
         # {42, 150, 350, 525} also saves -- 8 points, with 42 no 1050 / p --
         # so the lemma is about the maximum and not about the shape.
         self.assertEqual(sum(d // 2 for d in (42, 150, 350, 525)) - 1050 // 2, 8)
+
+    def test_the_sign_reading_holds_where_the_ranking_reading_does(self):
+        census = block_dominance_census(2000)
+        self.assertEqual(census["sign_violations"], [])
+        self.assertEqual(census["sign_verdict"],
+                         "no antichain saves where no block does")
 
     def test_the_reciprocal_sum_is_not_the_criterion(self):
         """``1/2 + 1/3 + 1/5`` is above one and still need not save a point.

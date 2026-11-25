@@ -46,6 +46,29 @@ class TestExitCodes(unittest.TestCase):
         self.assertEqual(payload["verdict"], "OVER_BUDGET")
         self.assertEqual(payload["cheapest"], 47)
 
+    def test_the_frontier_prints_the_crossing(self):
+        rc, out = run("strong-lemma", "--max-primes", "200")
+        self.assertEqual(rc, 0)
+        self.assertIn("crossing at 176 primes", out)
+        self.assertIn("1049", out)
+        # The savings have hundreds of digits: the headline must not dump them.
+        self.assertLess(max(len(token) for token in out.split()), 40)
+
+    def test_a_short_search_is_not_a_verdict(self):
+        rc, out = run("strong-lemma", "--max-primes", "100")
+        self.assertEqual(rc, 1)
+        self.assertIn("NOT_MEASURED", out)
+
+    def test_json_frontier_is_json_with_exact_integers(self):
+        rc, out = run("--json", "strong-lemma", "--max-primes", "200")
+        self.assertEqual(rc, 0)
+        data = json.loads(out)
+        self.assertEqual(data["crossing_primes"], 176)
+        self.assertEqual(data["crossing"]["digits"], 440)
+        self.assertEqual(data["crossing"]["excess"],
+                         data["crossing"]["pair_saving"]
+                         - data["crossing"]["block_saving"])
+
     def test_no_command_is_a_bad_request(self):
         rc, _ = run()
         self.assertEqual(rc, 3)
