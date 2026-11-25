@@ -384,9 +384,18 @@ class DesignLaw:
     designs of the 200 even periods at ``k = 4`` and ``k = 6`` it is strictly
     smaller than the radius, and the design pays nothing at it.
 
-    Measured over 1712 designs -- 200 even periods, budgets
-    ``{16, 24, 47, 64, 96}``, ``k`` in ``{2, 4, 6, 8}`` -- the line holds on
-    every interval between consecutive knots, no exception.
+    What the line rests on is one inequality per divisor: a drop of ``cliff``
+    from ``radius_d`` reaches the line only while ``cliff <= radius_d - radius``
+    at a critical margin inside the range, and that is the whole obstruction.
+
+    Measured over 3076 designs -- 200 even periods, budgets
+    ``{16, 24, 32, 47, 64, 96}``, ``k`` in ``{2, 3, 4, 5, 6, 7, 8}`` -- the line
+    holds on every interval between consecutive knots, and the inequality holds
+    with it, no exception.  It is not slack either: 1234 readings in that census
+    are divisors that *do* have a cliff to jump and land exactly on the line,
+    so equality is the typical case rather than a corner.  ``T = 12`` with the
+    design ``(4, 6)`` is the smallest: divisor ``4`` breaks at ``1/6`` and drops
+    ``1/3`` of a radius ``2/3``, which is exactly the design's excess.
     """
 
     radius: Fraction

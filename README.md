@@ -533,8 +533,15 @@ Three measurements, all reproducible:
   readings over the 200 even periods at `k = 4` and `k = 6`; at the edge the
   tolerance is under the line in **369 of 369**, never on it;
 - per design, the line holds on every interval between consecutive knots of the
-  span geometry in **1712 of 1712** designs — 200 even periods, budgets
-  `{16, 24, 47, 64, 96}`, `k` in `{2, 4, 6, 8}`;
+  span geometry in **3076 of 3076** designs — 200 even periods, budgets
+  `{16, 24, 32, 47, 64, 96}`, `k` in `{2, 3, 4, 5, 6, 7, 8}`;
+- a design's line rests on one inequality per divisor — a drop of `cliff_d` from
+  `radius_d` only undercuts it while `cliff_d > radius_d - radius` at a critical
+  margin inside the range — and that holds in the same **3076 of 3076**. It is
+  not slack: in **1234** readings the divisor *does* have a cliff to jump and
+  lands exactly **on** the line. The smallest case is `T = 12`, design `(4, 6)`,
+  divisor `4`: it breaks at `1/6` and drops `1/3` from a radius of `2/3` — exactly
+  the design's excess — so its tolerance meets the line at `v = 1/6` and no lower;
 - for **78 of 240** designs at `k = 4` and `k = 6` the first divisor break is
   strictly smaller than the radius, and the design pays nothing at it.
 

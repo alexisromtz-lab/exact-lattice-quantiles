@@ -9,8 +9,8 @@ one.  These tests pin the contrast: the divisor breaks, the design does not.
 import unittest
 from fractions import Fraction
 
-from exact_lattice_quantiles import (design_law, drift_law, drift_radius,
-                                     drift_tolerance, universe)
+from exact_lattice_quantiles import (DesignLaw, DriftLaw, design_law, drift_law,
+                                     drift_radius, drift_tolerance, universe)
 from exact_lattice_quantiles.coverage import _reach_from_zero, _shrinks, _spans
 from exact_lattice_quantiles.solve import (InfeasibleWithinBudget,
                                            solve_lattice_schedule)
@@ -67,6 +67,33 @@ class DesignLinearityTest(unittest.TestCase):
                             if radii[d] > shape.radius))
         past = (shape.first_divisor_break + shape.radius) / 2
         self.assertEqual(design_tolerance(G, Q, U, past), shape.radius - past)
+
+    def test_a_cliff_lands_exactly_on_the_design_line(self):
+        """The extremal case: a divisor's drop reaches the line, and stops there.
+
+        What a design's line rests on is one inequality per divisor: a drop of
+        ``cliff_d`` from a radius ``radius_d`` only undercuts the line while the
+        critical margin is inside the range, so the design pays nothing at it
+        when ``cliff_d <= radius_d - radius``.  On ``T = 12`` the design
+        ``(4, 6)`` attains that with equality: ``d = 4`` breaks at ``1/6`` and
+        drops ``1/3`` from a radius of ``2/3``, which is exactly the design's own
+        excess over its radius, so the divisor's tolerance lands on the line at
+        ``v = 1/6`` rather than under it.  One larger drop and the design would
+        have the cliff the theorem denies it -- so this is the tightest reading
+        the package publishes, and it is quoted for that reason.
+        """
+        s = solve_lattice_schedule(12, max_cost=16, k_probes=3,
+                                   min_margin=Fraction(0))
+        U = universe(12)
+        G, Q = s.design, s.probes
+        self.assertEqual(G, (4, 6))
+        shape = design_law(G, Q, U)
+        self.assertEqual(shape, DesignLaw(Fraction(1, 3), Fraction(1, 6)))
+        law = drift_law(G, Q, U)[4]
+        self.assertEqual(law, DriftLaw(Fraction(2, 3), Fraction(1, 6), Fraction(1, 3)))
+        self.assertEqual((law.radius - shape.radius) - law.cliff, 0)
+        self.assertEqual(design_tolerance(G, Q, U, law.critical_margin),
+                         shape.radius - law.critical_margin)
 
     def test_first_divisor_break_is_the_narrowest_divisor(self):
         for period in range(2, 122, 2):
