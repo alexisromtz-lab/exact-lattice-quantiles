@@ -44,3 +44,6 @@ Source = "https://github.com/alexisromtz-lab/exact-lattice-quantiles"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+exact_lattice_quantiles = ["manifests/*.json"]

@@ -383,8 +383,8 @@ returned or stored.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 77 tests
-exact-lattice-quantiles --self-test           # 12 checks, RC 0
+python -m unittest discover -s tests -t .     # 119 tests
+exact-lattice-quantiles --self-test           # 13 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,
@@ -392,6 +392,37 @@ including the cases where the first implementation was wrong: filtering the
 scan to even grids halves the ceiling of every odd divisor; `T = 2` needs its
 degenerate branch; a design that does not seat every divisor has margin `0`
 rather than raising; and the coverage DP is compared against brute force.
+
+### A claim kept outside the package can be recomputed
+
+Every number above gets quoted somewhere else — in notes, tickets, drafts — and
+nothing recomputes those quotes. So the quote and the library drift apart while
+both look fine, and the only witness to the boundary is somebody remembering
+it. `verify-acta` turns that boundary into a gate: give it a **manifest**, a
+JSON list of anchors each stating one quantity for one period, and it
+recomputes every one in exact arithmetic and reports **per field**, so a
+divergence names the quantity instead of the file.
+
+```
+exact-lattice-quantiles verify-acta \
+  src/exact_lattice_quantiles/manifests/acta_margen_secciones_20261125.json
+# 69 checks over 21 anchors: 69 reproduce, 0 divergent        RC 0
+```
+
+An anchor is one of three kinds:
+
+| kind | required | optional |
+| --- | --- | --- |
+| `ceiling` | `period`, `margin` | `critical_divisor`, `grids`, `universe_size`, `cost_cover`, `cost_ceiling` |
+| `design` | `period`, `max_cost`, `probes`, `margin` | `cost`, `design`, `probes_needed`, `robust_margin`, `verdict` |
+| `frontier` | `period` | `max_period`, `reduced`, `witness`, `bound`, `cover`, `saving`, `breaks`, `scanned` |
+
+Exit code `1` means the library and the manifest disagree: the manifest is
+stale, or the change was not intended — either way a human decides. Exit code
+`3` means the manifest cannot be judged at all: not JSON, no `anchors` list, an
+empty list, an unknown kind, a missing field, or a **float** where an exact
+value belongs. A float is refused because it cannot express `1/3`, and an empty
+manifest is refused because verifying nothing is not a green light.
 
 ## Citation
 
