@@ -59,7 +59,7 @@ $ exact-lattice-quantiles designs 180
 $ exact-lattice-quantiles census 2 400
 ```
 
-## Three claims, each reproducible by a command
+## Four claims, each reproducible by a command
 
 ### 1. The ceiling belongs to the instance
 
@@ -147,6 +147,36 @@ all reaches past `1/6`:
 solve_lattice_schedule(180, max_cost=47, k_probes=4, min_margin="1/6")
 # verdict = "PROBES_INSUFFICIENT", probes_needed = 8, witness_margin = 2/33
 ```
+
+### 4. The price is a minimum, not a formula
+
+The tempting formula is "buy one grid per maximal divisor", so the price would
+be `sum(d // 2 for d in maximal(needed))`. It is always a *legal* design and it
+is the exact optimum over `U(T)` -- but it is not the price over the grids.
+
+A block of grids can be bought whole for less than the sum of its parts:
+`{12, 20, 30}` costs `31` bought separately and `30` as the single grid `60`,
+their least common multiple. Two incomparable divisors never save
+(`lcm(a, b) >= a + b`), so the formula is exact on every request whose every
+frontier has no triple, and wrong everywhere else.
+
+```
+$ exact-lattice-quantiles price 180
+180 over U(T) (12 elements, 4095 requests)
+  one grid per maximal    closed form, 117 frontiers
+  exact minimum           cheapest cover 47 points, one grid alone 90
+  requests overcharged    0 (0) on 0 frontiers
+180 over every divisor (17 elements, 131071 requests)
+  one grid per maximal    closed form, 173 frontiers
+  exact minimum           cheapest cover 90 points, one grid alone 90
+  requests overcharged    9984 (9984/131071) on 10 frontiers
+```
+
+So the library never prices with the formula: `price_exact` is a subset DP over
+the coverage masks, and `price_form_census` publishes how often the shortcut
+agrees. Restricting the universe to `U(T)` is what makes the shortcut look
+right, and that restriction is a modelling decision, not a measurement --
+`price_form_census(period, reduced=False)` is the row that shows it.
 
 ## What the three exit codes mean
 

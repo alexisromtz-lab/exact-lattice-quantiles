@@ -19,6 +19,7 @@ from fractions import Fraction
 from .ceiling import (InfeasibleAboveInstanceCeiling, ceiling_by_product,
                       ceiling_by_scan, ceiling_census, instance_ceiling)
 from .coverage import coverage_census
+from .pricing import price_form_census
 from .solve import InfeasibleWithinBudget, ladder, solve_lattice_schedule
 
 RC_OK = 0
@@ -136,6 +137,22 @@ def _print_census(low: int, high: int, as_json: bool) -> int:
     return RC_OK
 
 
+def _print_price(period: int, as_json: bool) -> int:
+    rows = [price_form_census(period), price_form_census(period, reduced=False)]
+    if as_json:
+        print(json.dumps([row.as_dict() for row in rows], indent=2, sort_keys=True))
+        return RC_OK
+    for row in rows:
+        print(f"{period} over {'U(T)' if row.reduced else 'every divisor'}"
+              f" ({row.universe_size} elements, {row.consumers} requests)")
+        print(f"  one grid per maximal    closed form, {row.frontiers} frontiers")
+        print(f"  exact minimum           cheapest cover {row.cheapest_cover}"
+              f" points, one grid alone {row.one_grid}")
+        print(f"  requests overcharged    {row.discrepancies} ({row.share})"
+              f" on {row.saving_frontiers} frontiers")
+    return RC_OK
+
+
 def _self_test() -> int:
     """A handful of claims the package makes, checked in-process."""
     ok = True
@@ -220,6 +237,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_designs = sub.add_parser("designs", help="census of every design of one period")
     p_designs.add_argument("period", type=int)
+
+    p_price = sub.add_parser(
+        "price", help="closed-form price against the exact minimum, both universes")
+    p_price.add_argument("period", type=int)
     return parser
 
 
@@ -246,6 +267,8 @@ def main(argv: list[str] | None = None) -> int:
             return _print_census(args.low, args.high, args.json)
         if args.command == "designs":
             return _print_designs(args.period, args.json)
+        if args.command == "price":
+            return _print_price(args.period, args.json)
     except ValueError as exc:
         print(f"BAD_REQUEST: {exc}", file=sys.stderr)
         return RC_BAD_REQUEST
