@@ -380,6 +380,32 @@ def block_saving(n: int) -> int:
     return sum(d // 2 for d in block) - whole // 2
 
 
+def carrier_block_of(n: int, carried: tuple[int, ...] | set[int]) -> tuple[tuple[int, ...], int]:
+    """The drop-one block of ``n``, kept only where the universe carries it.
+
+    ``U(T)`` is not divisor-closed: it can hold ``84``, ``140`` and ``210`` while
+    missing ``60``, even though all four are the block of ``420``.  The filter
+    is therefore part of the law and not a detail -- dropping an element can
+    only lower the least common multiple that covers the rest, so a filtered
+    block can save where the whole one cannot.
+    """
+    block, _ = block_of(n)
+    kept = tuple(d for d in block if d in carried)
+    if not kept:
+        return (), 1
+    return kept, lcm(*kept)
+
+
+def carrier_block_saving(n: int, carried: tuple[int, ...] | set[int]) -> int:
+    """The saving of the block of ``n`` after the universe keeps its part.
+
+    Same integer rule as :func:`block_saving` -- charged apart, ``sum(d // 2)``;
+    covered whole, ``lcm(d) // 2`` -- applied to the kept elements only.
+    """
+    kept, whole = carrier_block_of(n, carried)
+    return sum(d // 2 for d in kept) - whole // 2
+
+
 def block_catalogue(limit: int) -> tuple[tuple[int, int, tuple[int, ...]], ...]:
     """Every ``n <= limit`` whose block saves and that no divisor of it improves.
 
@@ -399,44 +425,62 @@ def block_catalogue(limit: int) -> tuple[tuple[int, int, tuple[int, ...]], ...]:
     return tuple(out)
 
 
-def frontier_by_blocks(max_period: int) -> dict:
-    """The frontier over the full divisor universe ``D(T)``, by the block law.
+def frontier_by_blocks(max_period: int, reduced: bool = False) -> dict:
+    """The frontier over either universe, by one law with the universe as a filter.
 
-    Over ``D(T)`` no search is needed: a period is mispriced exactly when one of
-    its divisors has a drop-one block that saves, so the answer is a
-    divisibility statement.  Measured against the exhaustive block search on
-    every even period to 2000 the law and the search agree on all 1000, with
-    the same witness and the same saving.
+    The law is the same sentence in both universes: a period is mispriced when
+    some divisor ``n`` of it has a drop-one block whose kept part is cheaper
+    bought as one grid than bought apart.  Only the filter changes -- ``D(T)``
+    keeps everything, ``U(T)`` keeps the carriers -- and that single difference
+    is the whole eighteen-fold gap between the two frontiers.
 
-    The first period is ``60``: ``{12, 20, 30}`` costs ``31`` bought apart and
-    ``30`` as the single grid ``60``.  The reduced universe ``U(T)`` is 18 times
-    later, which is the whole point of naming the universe.
+    Over ``D(T)`` the answer is a divisibility statement: the first period is
+    ``60``, because ``{12, 20, 30}`` costs ``31`` apart and ``30`` as the grid
+    ``60``.  Measured against the exhaustive search on every even period to
+    2000, the law agrees on all 1000 with the same witness and the same saving;
+    it also agrees on all 125 breaks to 3000, where no witness of the maximum is
+    anything other than a drop-one block.
+
+    Over ``U(T)`` the first period is ``1080``, where ``{54, 90, 135}`` costs
+    ``139`` apart and ``135`` as the grid ``270``.  ``840`` is a multiple of
+    ``60`` and still does not break: it carries ``20`` and ``12`` but not
+    ``30``, so the block of ``60`` survives there with two elements, and two
+    incomparable grids never save.  Measured against the exhaustive search on
+    every even period to 8000, the law agrees on all 16 breaks -- and on the
+    *value* of every saving, not only on break against no-break.
     """
-    saving = {n: block_saving(n) for n in range(2, max_period + 1)}
+    periods = range(2, max_period + 1, 2)
     breaks = []
-    for period in range(2, max_period + 1, 2):
-        best = max(((saving.get(d, 0), d) for d in divisors(period)),
-                   default=(0, 0))
+    for period in periods:
+        carried = set(universe(period)) if reduced else set(divisors(period))
+        best = (0, 0, (), 0)
+        for n in divisors(period):
+            if n < 2:
+                continue
+            kept, whole = carrier_block_of(n, carried)
+            saving = sum(d // 2 for d in kept) - whole // 2
+            if saving > best[0]:
+                best = (saving, n, kept, whole)
         if best[0] > 0:
-            breaks.append((period, best[0], best[1]))
+            breaks.append((period,) + best)
     scanned = max_period // 2
+    universe_name = "U(T)" if reduced else "D(T)"
     if not breaks:
         return {"period": None, "saving": 0, "witness": (), "bound": 0,
                 "cover": 0, "grid": 0, "breaks": 0, "scanned": scanned,
-                "universe": "D(T)", "law": "blocks"}
-    period, s, n = breaks[0]
-    block, grid = block_of(n)
+                "universe": universe_name, "law": "carrier blocks"}
+    period, saving, n, kept, whole = breaks[0]
     return {
         "period": period,
-        "saving": s,
-        "witness": block,
-        "bound": sum(d // 2 for d in block),
-        "cover": grid // 2,
-        "grid": grid,
+        "saving": saving,
+        "witness": kept,
+        "bound": sum(d // 2 for d in kept),
+        "cover": whole // 2,
+        "grid": whole,
         "breaks": len(breaks),
         "scanned": scanned,
-        "universe": "D(T)",
-        "law": "blocks",
+        "universe": universe_name,
+        "law": "carrier blocks",
     }
 
 
@@ -444,20 +488,12 @@ def exactness_frontier(max_period: int = 8000, reduced: bool = True) -> dict:
     """The first even period whose universe the closed form misprices.
 
     The frontier is a property of the **universe**, and the two answers differ
-    by a factor of eighteen:
-
-    ``D(T)``, every divisor, is ``60`` -- ``{12, 20, 30}`` costs ``31`` bought
-    apart and ``30`` as the single grid ``60``.  There no search is needed: the
-    block law of :func:`block_saving` decides it in ``O(tau(T))``, and the law
-    matches the exhaustive block search on all 1000 even periods to 2000, same
-    witness and same saving.
-
-    ``U(T)``, the reduced carriers, is ``1080`` -- ``{54, 90, 135}``, ``139``
-    against ``135``.  Here the law of divisors is *necessary and not
-    sufficient*: reducing to carriers deletes witnesses.  ``840`` carries ``12``
-    and ``20`` but not ``30``, so it inherits no block from ``60``; and of the
-    16 breaks below 8000, nine have witnesses that are no divisor's whole block.
-    So ``reduced=True`` still searches, and this docstring is not a proof.
+    by a factor of eighteen: ``60`` over every divisor and ``1080`` over the
+    reduced carriers.  Both are decided by the same law -- the carrier block of
+    a divisor -- and the only difference between the two universes is which
+    elements survive the filter, so neither answer is searched for.  What
+    carries each universe, and how the law was checked against the exhaustive
+    search there, is stated in :func:`frontier_by_blocks`.
 
     The witness is certified by the cover, not by a DP: ``{lcm(witness)}`` is a
     legal design that covers the block, so its price is an upper bound the DP
@@ -465,35 +501,4 @@ def exactness_frontier(max_period: int = 8000, reduced: bool = True) -> dict:
     ``2^32`` -- the certificate has to survive where the search cannot run, and
     :func:`price_exact` now runs there too by taking the maximals only.
     """
-    if not reduced:
-        return frontier_by_blocks(max_period)
-    breaks: list[tuple[int, int, tuple[int, ...], int, int]] = []
-    for period in range(2, max_period + 1, 2):
-        saving, witness, bound, cover = best_block_saving(universe(period))
-        if saving > 0:
-            breaks.append((period, saving, witness, bound, cover))
-    scanned = max_period // 2
-    if not breaks:
-        return {"period": None, "saving": 0, "witness": (), "bound": 0,
-                "cover": 0, "grid": 0, "breaks": 0, "scanned": scanned,
-                "universe": "U(T)", "law": "search"}
-    period, saving, witness, bound, cover = breaks[0]
-    return {
-        "period": period,
-        "saving": saving,
-        "witness": witness,
-        "bound": bound,
-        "cover": cover,
-        "grid": _lcm_grid(witness),
-        "breaks": len(breaks),
-        "scanned": scanned,
-        "universe": "U(T)",
-        "law": "search",
-    }
-
-
-def _lcm_grid(witness: tuple[int, ...]) -> int:
-    merged = 1
-    for d in witness:
-        merged = _lcm(merged, d)
-    return merged
+    return frontier_by_blocks(max_period, reduced=reduced)
