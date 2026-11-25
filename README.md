@@ -382,11 +382,14 @@ slack. Therefore `sum_A a <= L * e1`, hence
 
 The proof never looks at the universe, only at `lcm(A)`, so it transfers to any
 set of grids a schedule may use. What it does not cover is the band `e1 > 1`
-with the block still saving nothing, and there the block's own saving is
-`(L * e1 - L - (#odd_B - [L odd])) / 2` with `#odd_B <= 1`, so the band is
-exactly `L * (e1 - 1) = 1` together with `v2(L) = 1`. For squarefree `L` that
-is `sum(1/p) - prod(1/p) = 1` -- Giuga's equation -- and the census below finds
-its only three members under `2000`:
+where the block still saves nothing. There the block's own saving is
+`(L * e1 - L - (#odd_B - [L odd])) / 2`, and `#odd_B` -- the odd members of
+`{L // p}` -- is what makes a band possible at all. With `v2(L) >= 2` every
+member is even, so `#odd_B = 0` and the block saves `L * (e1 - 1) / 2 >= 1`,
+which confines the band to `v2(L) = 1`: there the single odd member `L // 2`
+buys back exactly one point, and the band is `L * (e1 - 1) = 1`. For squarefree
+`L` that is `sum(1/p) - prod(1/p) = 1` -- Giuga's equation -- and the census
+below finds its only three members under `2000`:
 
 ```
 $ exact-lattice-quantiles sign-theorem
@@ -401,6 +404,14 @@ sign lemma: if no block saves, no antichain saves
       1722  sum 1/p = 1723/1722  period*(sum-1) = 1   block   0  ceiling 0  Giuga equation
   verdict  no antichain saves where the theorem forbids it
 ```
+
+The odd periods are the one case this argument leaves open: there every member
+of `{L // p}` is odd, so `#odd_B = w` and the slack is `w - 1` instead of `1`,
+and `e1 > 1` needs at least nine odd primes to happen at all. The census reports
+no odd period with `e1 > 1` and a non-saving block, and `sign_regime` says
+`characterised: None` for them rather than guess -- the band there is absent
+from the census, not proved empty. The `v2 >= 2` half *is* a proof, so the tests
+pin it the other way: no band row may have `v2(L) != 1`.
 
 `1581` of the `1914` proved periods are *sharp*: the heaviest antichain weighs
 exactly the block, so the bound is tight and a proof cannot be pushed further
@@ -634,7 +645,7 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 221 tests
+python -m unittest discover -s tests -t .     # 222 tests
 exact-lattice-quantiles --self-test           # 51 checks, RC 0
 ```
 
