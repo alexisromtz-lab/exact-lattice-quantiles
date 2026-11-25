@@ -432,7 +432,12 @@ request costs exactly what its maximals cost, and the state space is `2^k` with
 `k` the number of maximals. Verified against the `2^|U|` table on all 8 388 607
 requests over the divisors of 360, with 0 discrepancies -- and it is what makes
 `price_exact(1080, (54, 90, 135))` return `135` in under a millisecond where the
-full table is `2^23` masks, and `2520` is `2^32`.
+full table is `2^23` masks, and `2520` is `2^32` — a table the package now
+refuses by name (`RC 5`, `MaskTableTooLarge`) instead of trying to allocate. The
+contrast is the whole argument: `price_form_census(2520)` enumerates all `2^32`
+requests and is refused, while `price_exact(2520, U(2520))` returns `649` in
+under a millisecond, because those 32 divisors have 6 maximals and the request
+costs what its frontier costs.
 
 So the library never prices with the formula: `price_exact` is a subset DP over
 the coverage masks, and `price_form_census` publishes how often the shortcut
@@ -509,6 +514,7 @@ over-budget one can.
 | 2 | `InfeasibleWithinBudget` | exists, but `cheapest > max_cost` |
 | 3 | `ValueError` (CLI) | malformed request — bad fraction, bad flag, odd period |
 | 4 | — (CLI) | the verdict is not `OK`: no schedule was delivered |
+| 5 | `MaskTableTooLarge` | the answer exists; its table is above `TABLE_BUDGET` |
 
 `RC 3` covers two different refusals and names which. A malformed request is a
 `ValueError` about the *syntax*; an odd period is `OddPeriodUnsupported` (a
@@ -516,6 +522,39 @@ over-budget one can.
 the *subject*: `U(T)` is empty, so there is nothing to compute. Before 0.9.1
 the second arrived as CPython's `ValueError: min() iterable argument is empty`
 — the arithmetic reporting on itself, with the period nowhere in the message.
+
+`RC 5` is not `RC 3`, and the distance between them is the whole distinction: an
+odd period has no answer to give, a period above the table budget has an answer
+and no room to compute it here. Six call sites size a bitmask table by `2^n` in
+the number of divisors — the cheapest-design DP, the set-cover DP, the design
+census, the maximal-divisor table, the cheapest-cover table and the frontier
+price table — and before 0.11.0 the only bound on that allocation was the
+machine, so the process was killed with `RC 137` and the caller learned nothing:
+not the period, not the site, not that the schedule exists. From 0.11.0
+`mask_table` is the only way a site sizes a table, and it refuses by name before
+a single list is built: `solve 1440` answers `RC 5` in 3 ms and says
+`2^27 masks over 36 rows = 4831838208 cells, above the budget of 536870912`.
+
+The budget is a **cell count** — slots touched — and not seconds, because wall
+time on a shared machine moved by 4x between two runs of the same instance.
+Peak RSS read with `/usr/bin/time -l`; `getrusage` inside the process reported
+`0.54 GB` right after a `1.2 GB` allocation and is not an instrument here.
+
+| site | period | divisors | cells | verdict |
+| --- | --- | --- | --- | --- |
+| design | 360 | 17 | `24 * 2^17` = 3.1 M | 0.5 s, returns |
+| design | 720 | 22 | `30 * 2^22` = 126 M | 25.5 s, 0.83 GB |
+| design | 1260 | 23 | `36 * 2^23` = 302 M | 11–48 s, 1.46 GB |
+| design | 1440 | 27 | `36 * 2^27` = 4832 M | refused, RC 5 |
+| design | 1800 | 24 | `35 * 2^24` = 604 M | never returned |
+| probes | 1680 | 27 | `2 * 2^27` = 268 M | 6.2 s, 2.02 GB |
+| census | 360 | 17 | `17 * 2^17` = 2.2 M | 13.3 s |
+| census | 720 | 22 | `29 * 2^22` = 122 M | refused, RC 5 |
+
+`TABLE_BUDGET = 2^29` sits between the largest instance that ever returned
+(`1260`, 302 M cells) and the next class up (`1800`, 604 M cells), so the
+refusal eats nothing that was ever answered: `T = 360` at a `1/6` margin is
+still `112` points, and that is a test, not a promise.
 
 `PROBES_INSUFFICIENT` is a verdict on the returned `Schedule`, not an
 exception: the design was found, the sections were not enough, and the object

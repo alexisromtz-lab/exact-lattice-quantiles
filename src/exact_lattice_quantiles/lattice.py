@@ -14,6 +14,12 @@ The objects here are the geometry the rest of the package reasons about.
 Grids may be even or odd.  Only even grids contribute to ``U(T)``, because a
 section is a position in a phase of ``M / 2`` classes and an odd ``M`` has no
 such middle.
+
+The tables that answer these questions are indexed by bitmask, so their size is
+``2^n`` in the number of divisors and it is the one limit of the implementation
+that is not a property of the instance.  :data:`TABLE_BUDGET` names it and
+:func:`mask_table` refuses over it by name, before the allocation, instead of
+letting the kernel kill the process with no verdict at all.
 """
 
 from __future__ import annotations
@@ -23,6 +29,64 @@ from fractions import Fraction
 from functools import lru_cache
 
 from .arithmetic import divisors, mass
+
+TABLE_BUDGET = 1 << 29
+"""Cells one call may allocate: ``2^29`` slots, at most a few GB resident.
+
+A *cell* is one slot of one table row, so a DP keeping ``rows`` tables of
+``2^n`` masks asks for ``rows * 2^n`` cells.  The number is measured, not
+chosen: the largest instance answered today is ``T = 1260`` at ``36 * 2^23``
+cells (302 million, 1.46 GB peak RSS), and the next class up is ``T = 1800``
+at ``35 * 2^24`` (604 million), which was left running past every wall clock
+this machine allows.  ``2^29`` sits between them, so every instance that has
+ever returned still returns and every one that thrashed is refused by name.
+"""
+
+
+class MaskTableTooLarge(ValueError):
+    """The answer exists; this implementation will not allocate its table.
+
+    Not a property of the instance and not a budget the caller set: the
+    schedule is there, and the table that would find it is above
+    :data:`TABLE_BUDGET`.  Distinct from :class:`OddPeriodUnsupported` for that
+    reason -- an odd period has no answer to give, this one has an answer and
+    no room to compute it.
+
+    A ``ValueError`` so that a caller already catching the package's refusals
+    keeps working; ``rc = 5`` so that a shell can tell the two apart.
+    """
+
+    rc = 5
+
+    def __init__(self, site: str, count: int, width: int, period: int | None) -> None:
+        self.site = site
+        self.count = count
+        self.width = width
+        self.period = period
+        self.cells = width << count
+        where = f"period {period}: " if period is not None else ""
+        rows = "row" if width == 1 else "rows"
+        super().__init__(
+            f"{where}{site} would allocate 2^{count} masks over {width} {rows} = "
+            f"{self.cells} cells, above the budget of {TABLE_BUDGET}; the answer "
+            f"exists and this implementation will not allocate the table")
+
+
+def mask_table(count: int, site: str, period: int | None = None,
+               width: int = 1) -> int:
+    """``1 << count``, the size of a mask table, if it fits :data:`TABLE_BUDGET`.
+
+    ``width`` is how many slots the loop body touches for each mask -- one for a
+    table read once, the number of rows for a DP that keeps a table per row --
+    so the reserve asked for is the work the call is about to do and not only
+    the memory it will hold.  Refuses with :class:`MaskTableTooLarge`, naming
+    the arithmetic, before a single list is built.
+    """
+    if width < 1:
+        raise ValueError(f"a table has at least one row, got {width}")
+    if width << count > TABLE_BUDGET:
+        raise MaskTableTooLarge(site, count, width, period)
+    return 1 << count
 
 
 @lru_cache(maxsize=None)

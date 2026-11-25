@@ -11,6 +11,9 @@ Exit codes are part of the contract:
 ``3``  the request itself is malformed
 ``4``  the acta could not be measured (no git, no such table, not exact): the
        boundary is ``NO_MEDIDO``, and ``NO_MEDIDO`` never degrades to ``0``
+``5``  the instance has an answer and its table is above :data:`TABLE_BUDGET`:
+       the implementation refused by name before allocating, so the shell can
+       tell "too big to compute here" from "malformed" and from "impossible"
 """
 
 from __future__ import annotations
@@ -28,7 +31,7 @@ from .acta import (ManifestError, SourceError, inspect_source, load_manifest,
 from .coverage import (coverage_census, design_law, drift_law, drift_radius,
                        drift_tolerance, witness_margin)
 from .arithmetic import primes_of
-from .lattice import universe
+from .lattice import TABLE_BUDGET, MaskTableTooLarge, mask_table, universe
 from .pricing import (antichain_saving_ceiling, block_catalogue,
                       block_dominance_census, block_of, block_saving,
                       carrier_block_of, carrier_block_saving,
@@ -44,6 +47,7 @@ RC_ABOVE_CEILING = 1
 RC_OVER_BUDGET = 2
 RC_BAD_REQUEST = 3
 RC_NO_MEDIDO = 4
+RC_BEYOND_TABLE_BUDGET = 5
 
 
 def _margin(value: Fraction | None) -> str:
@@ -113,6 +117,21 @@ def _print_solve(args: argparse.Namespace) -> int:
         else:
             print(f"OVER_BUDGET: {exc}")
         return RC_OVER_BUDGET
+    except MaskTableTooLarge as exc:
+        if args.json:
+            print(json.dumps({
+                "verdict": "BEYOND_TABLE_BUDGET",
+                "period": exc.period,
+                "site": exc.site,
+                "masks": f"2^{exc.count}",
+                "width": exc.width,
+                "cells": exc.cells,
+                "budget": TABLE_BUDGET,
+                "reason": str(exc),
+            }, indent=2, sort_keys=True))
+        else:
+            print(f"BEYOND_TABLE_BUDGET: {exc}")
+        return RC_BEYOND_TABLE_BUDGET
     if args.json:
         print(json.dumps(schedule.as_dict(), indent=2, sort_keys=True))
         return RC_OK if schedule.verdict == OK else RC_NO_MEDIDO
@@ -147,6 +166,9 @@ def _print_drift(args: argparse.Namespace) -> int:
     except InfeasibleWithinBudget as exc:
         print(f"OVER_BUDGET: {exc}", file=sys.stderr)
         return RC_OVER_BUDGET
+    except MaskTableTooLarge as exc:
+        print(f"BEYOND_TABLE_BUDGET: {exc}", file=sys.stderr)
+        return RC_BEYOND_TABLE_BUDGET
     U = universe(schedule.period)
     Q = schedule.probes
     if schedule.witness_margin is None:
@@ -589,6 +611,13 @@ def _self_test() -> int:
         check("a table is never computed at read time", "SourceError", "SourceError")
     else:
         check("a table is never computed at read time", "accepted", "SourceError")
+    try:
+        mask_table(30, "the self-test")
+    except MaskTableTooLarge as exc:
+        check("a table above the budget is refused by name", exc.rc, 5)
+    else:
+        check("a table above the budget is refused by name", "allocated",
+              "MaskTableTooLarge")
     return RC_OK if ok else RC_ABOVE_CEILING
 
 
@@ -741,6 +770,9 @@ def main(argv: list[str] | None = None) -> int:
             return _print_sign_theorem(args.max_period, args.json)
         if args.command == "verify-acta":
             return _print_verify_acta(args.manifest, args.json, args.source)
+    except MaskTableTooLarge as exc:
+        print(f"BEYOND_TABLE_BUDGET: {exc}", file=sys.stderr)
+        return RC_BEYOND_TABLE_BUDGET
     except ValueError as exc:
         print(f"BAD_REQUEST: {exc}", file=sys.stderr)
         return RC_BAD_REQUEST

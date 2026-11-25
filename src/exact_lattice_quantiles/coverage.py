@@ -32,7 +32,7 @@ import itertools
 from dataclasses import dataclass
 from fractions import Fraction
 
-from .lattice import _interval_map, cell_widths, grids, universe
+from .lattice import _interval_map, cell_widths, grids, mask_table, universe
 
 
 def _position(U: tuple[int, ...]) -> dict[int, int]:
@@ -56,24 +56,28 @@ def cover_masks(gr: tuple[int, ...], U: tuple[int, ...],
 
 def minimum_cost_design(gr: tuple[int, ...], U: tuple[int, ...],
                         widths: dict[tuple[int, int], Fraction],
-                        threshold: Fraction) -> tuple[int | None, tuple[int, ...] | None]:
+                        threshold: Fraction,
+                        period: int | None = None) -> tuple[int | None, tuple[int, ...] | None]:
     """``(cost, design)`` of the cheapest design with margin at least ``threshold``.
 
     ``(None, None)`` when no design reaches it, which by the duality means the
     threshold is above the ceiling of the instance.  The DP keeps the parent
     it travelled through; walking the path back by clearing bits takes a
     predecessor the DP never visited.
+
+    ``period`` is carried only so that a refusal can name the instance it
+    belongs to: the geometry is fully described by ``gr`` and ``U``.
     """
-    n = len(U)
-    full = (1 << n) - 1
+    full = mask_table(len(U), "the cheapest-design DP", period=period,
+                      width=len(gr) + 1) - 1
     cover = cover_masks(gr, U, widths, threshold)
     INF = 10**9
-    dp = [[INF] * (1 << n) for _ in range(len(gr) + 1)]
+    dp = [[INF] * (full + 1) for _ in range(len(gr) + 1)]
     parent: list[dict[int, int]] = [dict() for _ in range(len(gr) + 1)]
     dp[0][0] = 0
     for i, M in enumerate(gr):
         prev, nxt, par = dp[i], dp[i + 1], parent[i + 1]
-        for mask in range(1 << n):
+        for mask in range(full + 1):
             c = prev[mask]
             if c >= INF:
                 continue
@@ -99,7 +103,8 @@ def minimum_cost_design(gr: tuple[int, ...], U: tuple[int, ...],
 
 
 def margin_ladder(gr: tuple[int, ...], U: tuple[int, ...],
-                  widths: dict[tuple[int, int], Fraction]) -> dict[int, Fraction]:
+                  widths: dict[tuple[int, int], Fraction],
+                  period: int | None = None) -> dict[int, Fraction]:
     """``cost -> best margin`` over every width in the instance.
 
     Monotone by construction: buying a grid never makes a design worse.  The
@@ -109,7 +114,7 @@ def margin_ladder(gr: tuple[int, ...], U: tuple[int, ...],
     levels = sorted({v for v in widths.values()})
     out: dict[int, Fraction] = {}
     for v in levels:
-        cost, _ = minimum_cost_design(gr, U, widths, v)
+        cost, _ = minimum_cost_design(gr, U, widths, v, period)
         if cost is None:
             continue
         prev = out.get(cost)
@@ -473,6 +478,8 @@ def minimum_probes(G: tuple[int, ...], U: tuple[int, ...],
     bands, candidates = _probe_bands(G, U, threshold)
     if len({d for _, d, _, _ in bands}) < len(U):
         return None, None
+    # Two tables of ``2^|U|`` -- the cost of a cover and the step it came from.
+    full = mask_table(len(U), "the set-cover DP", width=2) - 1
     pos = _position(U)
     blocks = {(M, d): _interval_map(M)[d] for M, d, _, _ in bands}
     # Both edges of both objects: the block edges where a section can gain a
@@ -491,12 +498,11 @@ def minimum_probes(G: tuple[int, ...], U: tuple[int, ...],
             if _holds(q, L, R, threshold):
                 mask |= 1 << pos[d]
         cover.append(mask)
-    full = (1 << len(U)) - 1
     INF = len(U) + 1
-    dp = [INF] * (1 << len(U))
-    parent: list[tuple[int, int] | None] = [None] * (1 << len(U))
+    dp = [INF] * (full + 1)
+    parent: list[tuple[int, int] | None] = [None] * (full + 1)
     dp[0] = 0
-    for mask in range(1 << len(U)):
+    for mask in range(full + 1):
         c = dp[mask]
         if c >= INF:
             continue
@@ -556,7 +562,10 @@ def coverage_census(period: int) -> dict[str, int]:
     """Count over all ``2^|grids|`` designs: how many cover, how many are cheap.
 
     A flat census, not a search: it exists so that a number quoted in prose
-    can be reproduced by a command instead of a memory.
+    can be reproduced by a command instead of a memory.  Its inner loop reads
+    every grid for every design, so the reserve is ``|grids| * 2^|grids|``
+    cells -- the widest per-mask cost in the package, and the reason a census
+    of ``720`` is refused while ``360`` runs.
     """
     gr = grids(period)
     U = universe(period)
@@ -564,10 +573,12 @@ def coverage_census(period: int) -> dict[str, int]:
     cover = cover_masks(gr, U, widths, Fraction(0))
     masks = [cover[M] for M in gr]
     costs = [M // 2 for M in gr]
+    designs = mask_table(len(gr), "the design census", period=period,
+                         width=len(gr))
     full = (1 << len(U)) - 1
     covering = 0
     cheapest = None
-    for bits in range(1 << len(gr)):
+    for bits in range(designs):
         reached, cost = 0, 0
         for i in range(len(gr)):
             if bits >> i & 1:
@@ -578,7 +589,7 @@ def coverage_census(period: int) -> dict[str, int]:
         covering += 1
         if cheapest is None or cost < cheapest:
             cheapest = cost
-    return {"designs": 1 << len(gr), "covering": covering, "cheapest": cheapest or 0}
+    return {"designs": designs, "covering": covering, "cheapest": cheapest or 0}
 
 
 def all_designs(gr: tuple[int, ...]) -> "itertools.chain":

@@ -145,7 +145,7 @@ def solve_lattice_schedule(period: int, max_cost: int, k_probes: int,
     gr = grids(period)
     U = universe(period)
     widths = cell_widths(gr, U)
-    cost, design = minimum_cost_design(gr, U, widths, required)
+    cost, design = minimum_cost_design(gr, U, widths, required, period)
     if cost is None:  # pragma: no cover - ruled out by the ceiling check above
         raise InfeasibleAboveInstanceCeiling(period, required, ceiling.margin)
     if cost > max_cost:
@@ -202,4 +202,4 @@ def ladder(period: int) -> dict[int, Fraction]:
     """
     gr = grids(period)
     U = universe(period)
-    return margin_ladder(gr, U, cell_widths(gr, U))
+    return margin_ladder(gr, U, cell_widths(gr, U), period)

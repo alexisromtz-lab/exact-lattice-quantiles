@@ -31,7 +31,7 @@ from itertools import combinations
 from math import gcd, isqrt, lcm
 
 from .arithmetic import divisors, prime_factorization, primes_of
-from .lattice import cell_widths, grids, universe
+from .lattice import cell_widths, grids, mask_table, universe
 
 _INF = 10**9
 
@@ -57,8 +57,8 @@ def _maximal_table(U: tuple[int, ...]) -> list[int]:
     only when no surviving maximal is a multiple of it.
     """
     n = len(U)
-    table = [0] * (1 << n)
-    for mask in range(1, 1 << n):
+    table = [0] * mask_table(n, "the maximal-divisor table")
+    for mask in range(1, len(table)):
         low = mask & -mask
         i = low.bit_length() - 1
         kept = table[mask ^ low]
@@ -102,7 +102,7 @@ def _cheapest(period: int, reduced: bool
                 mask |= 1 << pos[d]
         covers.append((M, mask))
 
-    size = 1 << len(U)
+    size = mask_table(len(U), "the cheapest-cover table", period=period)
     f = [_INF] * size
     f[0] = 0
     for M, mask in covers:
@@ -145,7 +145,8 @@ def price_exact(period: int, needed: tuple[int, ...], reduced: bool = True) -> i
     k = len(A)
     if k == 0:
         return 0
-    best = [_INF] * (1 << k)
+    size = mask_table(k, "the frontier price table", period=period)
+    best = [_INF] * size
     best[0] = 0
     for M in grids(period):
         mask = 0
@@ -156,12 +157,12 @@ def price_exact(period: int, needed: tuple[int, ...], reduced: bool = True) -> i
             continue
         cost = M // 2
         nxt = list(best)
-        for s in range(1 << k):
+        for s in range(size):
             v = best[s]
             if v < _INF and v + cost < nxt[s | mask]:
                 nxt[s | mask] = v + cost
         best = nxt
-    return best[(1 << k) - 1]
+    return best[size - 1]
 
 
 @dataclass(frozen=True)
@@ -266,7 +267,7 @@ def price_form_census(period: int, reduced: bool = True) -> PriceFormCensus:
     seen: set[int] = set()
     saving: set[int] = set()
     consumers = discrepancies = 0
-    for mask in range(1, 1 << n):
+    for mask in range(1, len(table)):
         exact = best[mask]
         maxmask = table[mask]
         form = form_of.get(maxmask)
@@ -278,7 +279,7 @@ def price_form_census(period: int, reduced: bool = True) -> PriceFormCensus:
             discrepancies += 1
             saving.add(maxmask)
         seen.add(maxmask)
-    full = (1 << n) - 1
+    full = len(best) - 1
     one_grid = min((M // 2 for M, mask in covers if mask == full), default=0)
     return PriceFormCensus(
         period=period,

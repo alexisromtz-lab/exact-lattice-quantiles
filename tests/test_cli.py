@@ -7,6 +7,7 @@ import io
 import json
 import unittest
 
+from exact_lattice_quantiles import TABLE_BUDGET
 from exact_lattice_quantiles.cli import main
 
 
@@ -144,6 +145,25 @@ class TestSolveOutput(unittest.TestCase):
         rc, out = run("ladder", "180")
         self.assertEqual(rc, 0)
         self.assertIn("1/6", out)
+
+
+class TestBeyondTableBudget(unittest.TestCase):
+    def test_a_period_above_the_table_budget_exits_five(self):
+        rc, out = run("solve", "1440", "--max-cost", "99999", "--probes", "8")
+        self.assertEqual(rc, 5)
+        self.assertIn("BEYOND_TABLE_BUDGET", out)
+        self.assertIn("period 1440", out)
+
+    def test_the_json_verdict_carries_the_arithmetic(self):
+        # Exit 5 is not exit 3: the schedule exists and the table does not fit,
+        # so the payload names the cells and the budget that refused them.
+        rc, out = run("--json", "solve", "1440", "--max-cost", "99999",
+                      "--probes", "8")
+        self.assertEqual(rc, 5)
+        payload = json.loads(out)
+        self.assertEqual(payload["verdict"], "BEYOND_TABLE_BUDGET")
+        self.assertEqual(payload["budget"], TABLE_BUDGET)
+        self.assertEqual(payload["cells"], 36 << 27)
 
 
 class TestSelfTest(unittest.TestCase):
