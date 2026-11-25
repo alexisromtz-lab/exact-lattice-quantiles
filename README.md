@@ -661,3 +661,11 @@ See `CITATION.cff`. Author ORCID: [0009-0001-9116-075X](https://orcid.org/0009-0
 ## License
 
 MIT.
+
+## Field notes
+
+This repository belongs to an audit corpus whose measurements are published as
+field notes. Two of them come from the same work:
+
+- [Maths 2.0: why AI needs auditors, not just code generators](https://dev.to/alexisromtz7/maths-20-por-que-la-ia-necesita-auditores-no-solo-generadores-de-codigo-2f29)
+- [Mide el jacobiano antes de optimizar: cuántas restricciones tiene de verdad tu objetivo](https://dev.to/alexisromtz7/mide-el-jacobiano-antes-de-optimizar-cuantas-restricciones-tiene-de-verdad-tu-objetivo-3oe1)
