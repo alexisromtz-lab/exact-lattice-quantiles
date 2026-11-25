@@ -35,8 +35,8 @@ from __future__ import annotations
 from .arithmetic import (divisors, dropped_primes, euler_phi, mass,
                          prime_factorization, prime_product, primes_of, radical)
 from .ceiling import (Ceiling, InfeasibleAboveInstanceCeiling,
-                      ceiling_by_product, ceiling_by_scan, ceiling_census,
-                      instance_ceiling)
+                      OddPeriodUnsupported, ceiling_by_product,
+                      ceiling_by_scan, ceiling_census, instance_ceiling)
 from .coverage import (DesignLaw, DriftLaw, best_probes, covered_divisors,
                        design_law, design_margin, drift_law, drift_radius,
                        drift_tolerance, margin_ladder, minimum_cost_design,
@@ -56,7 +56,7 @@ from .solve import (OK, PROBES_INSUFFICIENT, UNDERCOVERED,
                     InfeasibleWithinBudget, Schedule, ladder,
                     solve_lattice_schedule)
 
-__version__ = "0.9.0"
+__version__ = "0.9.1"
 
 __all__ = [
     "Ceiling",
@@ -66,6 +66,7 @@ __all__ = [
     "pair_antichain_saving",
     "strong_lemma_frontier",
     "InfeasibleAboveInstanceCeiling",
+    "OddPeriodUnsupported",
     "InfeasibleWithinBudget",
     "OK",
     "PROBES_INSUFFICIENT",

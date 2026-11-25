@@ -78,6 +78,13 @@ class TestExitCodes(unittest.TestCase):
                     "--min-margin", "1/0")
         self.assertEqual(rc, 3)
 
+    def test_an_odd_period_is_a_bad_request_that_names_the_subject(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            rc, _ = run("ceiling", "9")
+        self.assertEqual(rc, 3)
+        self.assertIn("period 9 is odd", err.getvalue())
+
     def test_a_schedule_not_delivered_is_not_an_exit_zero(self):
         # Both non-OK verdicts return an object that names the shortfall.  Exit
         # 0 would say "we have a schedule" to a shell caller, and the margins

@@ -23,6 +23,13 @@ The chain of identities, each measured against the one before it:
 periods below 400 -- while 167 of the 200 exceed it and 3 fall below.  The
 ceiling is a function of the instance, and the exponent of a prime decides it
 only through which primes ``U(T)`` can afford to drop.
+
+The subject is the even periods.  ``U(T)`` is built from the even grids, and
+every divisor of an odd ``T`` is odd, so ``U(T)`` is empty for every odd ``T``:
+there is no minimum to take and no ceiling to state.  That boundary is refused
+by name (:class:`OddPeriodUnsupported`) at each entry point rather than left to
+``min()`` on an empty iterable, whose message names the arithmetic and not the
+period.
 """
 
 from __future__ import annotations
@@ -59,6 +66,30 @@ class Ceiling:
         return self.margin * 100
 
 
+class OddPeriodUnsupported(ValueError):
+    """The period is not in the theory's domain, and the refusal says why.
+
+    A section is a class of the phase ``M // 2``, so a grid is a carrier only
+    when it is even: an odd ``M`` has no middle class, and its blocks are the
+    ones the phase cannot seat.  Every divisor of an odd ``T`` is odd, so
+    ``U(T)`` is empty for every odd ``T`` -- there is no universe to take a
+    minimum over, and therefore no ceiling and no schedule.  The subject of
+    this package is the even periods, and this is the name of that boundary.
+
+    A ``ValueError`` because that is what every entry point raised before --
+    except that it raised CPython's ``min() iterable argument is empty``, which
+    names the arithmetic and not the subject.
+    """
+
+    def __init__(self, period: int) -> None:
+        self.period = period
+        super().__init__(
+            f"period {period} is odd: U(T) is empty because every grid of an odd "
+            f"period is odd and only an even grid carries a divisor, so there is "
+            f"no ceiling and no schedule -- the subject is the even periods"
+        )
+
+
 class InfeasibleAboveInstanceCeiling(Exception):
     """The margin asked for does not exist at any budget.
 
@@ -87,6 +118,8 @@ def instance_ceiling(period: int) -> Ceiling:
     if period < 2:
         raise ValueError(f"a period needs at least two phases, got {period}")
     U = universe_from_factorization(period)
+    if not U:
+        raise OddPeriodUnsupported(period)
     best = min(Fraction(mass(d), d) for d in U)
     critical = min(d for d in U if Fraction(mass(d), d) == best)
     dropped = dropped_primes(period, critical)
@@ -137,6 +170,8 @@ def ceiling_by_scan(period: int) -> Fraction:
     from .lattice import cell_width, grids, universe
 
     U = universe(period)
+    if not U:
+        raise OddPeriodUnsupported(period)
     gr = tuple(grids(period))
     return min(max(cell_width(M, d) for M in gr if d in _divisors_of(M)) for d in U)
 

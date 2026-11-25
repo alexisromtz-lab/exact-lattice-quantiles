@@ -6,10 +6,12 @@ from __future__ import annotations
 import unittest
 from fractions import Fraction
 
-from exact_lattice_quantiles import (ceiling_by_product, ceiling_by_scan,
+from exact_lattice_quantiles import (OddPeriodUnsupported,
+                                     ceiling_by_product, ceiling_by_scan,
                                      ceiling_census, instance_ceiling, mass,
-                                     prime_product)
+                                     prime_product, universe)
 from exact_lattice_quantiles.ceiling import InfeasibleAboveInstanceCeiling
+from exact_lattice_quantiles.solve import solve_lattice_schedule
 
 
 def _gcd(a: int, b: int) -> int:
@@ -142,6 +144,43 @@ class TestDroppedPrimes(unittest.TestCase):
                                1428, 1596, 1716, 1740, 1848, 1860, 1932])
         for T in two:
             self.assertEqual(instance_ceiling(T).margin, Fraction(1, 3), T)
+
+
+class TestTheDomain(unittest.TestCase):
+    def test_the_universe_is_empty_exactly_when_the_period_is_odd(self):
+        # Every divisor of an odd T is odd, and only an even grid carries a
+        # divisor: so U(T) is empty for every odd T and non-empty for every
+        # even one.  400 periods, no search involved.
+        for T in range(1, 401):
+            self.assertEqual(bool(universe(T)), T % 2 == 0, T)
+
+    def test_an_odd_period_is_refused_by_name(self):
+        # ``T = 1`` is refused earlier and for another reason: it has no
+        # phase of two classes at all.
+        for T in (5, 7, 9, 11, 15, 21, 45, 77, 105):
+            with self.assertRaises(OddPeriodUnsupported, msg=T) as caught:
+                instance_ceiling(T)
+            self.assertEqual(caught.exception.period, T)
+            self.assertIn(str(T), str(caught.exception))
+            self.assertIn("even", str(caught.exception))
+
+    def test_the_refusal_is_still_a_value_error(self):
+        # Every route raised ``ValueError`` before -- except that it raised
+        # CPython's "min() iterable argument is empty", which names the
+        # arithmetic.  A caller that caught the old one still catches this.
+        with self.assertRaises(ValueError):
+            instance_ceiling(9)
+
+    def test_every_route_refuses_the_same_way(self):
+        for route in (instance_ceiling, ceiling_by_product, ceiling_by_scan):
+            with self.assertRaises(OddPeriodUnsupported, msg=route.__name__):
+                route(15)
+        with self.assertRaises(OddPeriodUnsupported):
+            solve_lattice_schedule(15, max_cost=64, k_probes=4, min_margin=0)
+
+    def test_the_even_neighbour_is_untouched(self):
+        self.assertEqual(instance_ceiling(180).margin, Fraction(1, 3))
+        self.assertEqual(universe(180)[-1], 45)
 
 
 class TestInfeasible(unittest.TestCase):

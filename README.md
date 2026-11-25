@@ -105,6 +105,21 @@ Two independent routes (`ceiling_by_product` and `ceiling_by_scan`) are tested
 against each other on every even period to 400; `T = 2` is the single
 degenerate case, where `psi(2) = 2` has no mass to divide.
 
+**The subject is the even periods, and the boundary is named.** A section is a
+class of the phase `M // 2`, so only an even grid carries a divisor; an odd `M`
+has no middle class. Every divisor of an odd `T` is odd, so `U(T)` is empty for
+every odd `T` — measured, `bool(universe(T)) == (T % 2 == 0)` on all 400
+periods from 1 to 400. There is no universe to take a minimum over, hence no
+ceiling and no schedule, and the package says so instead of letting `min()`
+report on an empty iterable:
+
+```
+>>> instance_ceiling(9)
+OddPeriodUnsupported: period 9 is odd: U(T) is empty because every grid of an
+odd period is odd and only an even grid carries a divisor, so there is no
+ceiling and no schedule -- the subject is the even periods
+```
+
 ### 2. The margin/cost curve is exact, not a sample
 
 For `T = 180` — 12 divisors in the universe, 17 candidate grids — the entire
@@ -433,8 +448,15 @@ over-budget one can.
 | 0 | — | a schedule exists and is returned |
 | 1 | `InfeasibleAboveInstanceCeiling` | above `nu(T)`: no design at **any** cost |
 | 2 | `InfeasibleWithinBudget` | exists, but `cheapest > max_cost` |
-| 3 | `ValueError` (CLI) | malformed request — bad fraction, bad flag |
+| 3 | `ValueError` (CLI) | malformed request — bad fraction, bad flag, odd period |
 | 4 | — (CLI) | the verdict is not `OK`: no schedule was delivered |
+
+`RC 3` covers two different refusals and names which. A malformed request is a
+`ValueError` about the *syntax*; an odd period is `OddPeriodUnsupported` (a
+`ValueError` subclass, so a caller that caught the old one is unaffected) about
+the *subject*: `U(T)` is empty, so there is nothing to compute. Before 0.9.1
+the second arrived as CPython's `ValueError: min() iterable argument is empty`
+— the arithmetic reporting on itself, with the period nowhere in the message.
 
 `PROBES_INSUFFICIENT` is a verdict on the returned `Schedule`, not an
 exception: the design was found, the sections were not enough, and the object
