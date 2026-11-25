@@ -508,7 +508,7 @@ returned or stored.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 167 tests
+python -m unittest discover -s tests -t .     # 170 tests
 exact-lattice-quantiles --self-test           # 34 checks, RC 0
 ```
 
@@ -531,7 +531,7 @@ divergence names the quantity instead of the file.
 ```
 exact-lattice-quantiles verify-acta \
   src/exact_lattice_quantiles/manifests/acta_margen_secciones_20261125.json
-# 69 checks over 21 anchors: 69 reproduce, 0 divergent        RC 0
+# 84 checks over 24 anchors: 84 reproduce, 0 divergent        RC 0
 ```
 
 An anchor is one of three kinds:
@@ -570,7 +570,7 @@ its blob, its line count, and the tables the manifest quotes:
 
 ```
 exact-lattice-quantiles verify-acta <manifest> --source <acta.py>
-# 130 checks over 21 anchors: 130 reproduce, 0 divergent        RC 0
+# 163 checks over 24 anchors: 163 reproduce, 0 divergent        RC 0
 ```
 
 The acta is **parsed, not imported**: the reader walks the module's AST and
@@ -591,6 +591,33 @@ Three verdicts, and they are not the same verdict:
 
 A cell no anchor declares is reported as `sin ancla` rather than passed: an
 unmeasured cell is a blind spot with a name.
+
+### The tables the boundary cannot see, and the one that looked like a defect
+
+Twelve tables in that acta are keyed by period and written as literals, so the
+reader can evaluate all twelve. Four of them were quoted. Declaring the rest is
+not mechanical, and one of them is a trap worth writing down.
+
+Closed by declaring them: `TECHOS_FUERA_P55`, `U_FUERA_P55` and
+`D_ATADO_FUERA_P55` carry the acta's out-of-sample claim — four highly composite
+periods above 400 (`720, 840, 1260, 2520`) where the factorised ceiling must
+still match the exact sweep. Anchoring them puts that claim on **both** edges at
+once: this package recomputes the ceiling for those periods, and the acta's own
+cells are re-read and compared. `RAD30_P55` is the six periods that share
+`rad(T) = 30` and do not share a ceiling, which is the point of quoting them.
+
+Deliberately **not** quoted: `ESCALERA_47` and `ESCALERA_64`. They look
+comparable — same period, same cost, a margin per `k` — and they are not. The
+acta maximises the margin in `k` shared sections over **one fixed design** of
+that cost. `solve_lattice_schedule` maximises over **every** design within the
+budget. Same numbers on the surface, two different subjects underneath, and the
+values do differ: at `k = 4` and `k = 6` on cost 47, and at `k = 2` on cost 64,
+the package reaches a margin the acta's fixed design does not. Quoting both as
+one field would have produced a divergence that looks like a bug and is a
+mismatch of questions. They are recorded in the manifest's `not_reproducible`
+list with that reason instead, along with `PASOS_P55` (an instrument
+measurement), `CAIDAS_P55` (a census over 116 universes, not a quantity of one
+period) and `FUERA_P55` (a set per period, which no column kind can hold yet).
 
 ## Citation
 

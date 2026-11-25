@@ -11,11 +11,13 @@ import io
 import json
 import tempfile
 import unittest
+from fractions import Fraction
 from pathlib import Path
 
 from exact_lattice_quantiles import acta
 from exact_lattice_quantiles.acta import (SourceError, inspect_source,
                                           parse_tables, shipped_manifest)
+from exact_lattice_quantiles.ceiling import instance_ceiling
 from exact_lattice_quantiles.cli import main
 
 
@@ -165,7 +167,7 @@ class TestTheCommand(Planted):
     def test_without_source_the_verdict_is_unchanged(self):
         rc, out = run("verify-acta", str(shipped_manifest()))
         self.assertEqual(rc, 0)
-        self.assertIn("69 checks over 21 anchors", out)
+        self.assertIn("84 checks over 24 anchors", out)
 
     def test_a_divergent_acta_exits_one(self):
         manifest, _ = self.plant(ACTA.replace("F(1, 3)", "F(8, 15)"))
@@ -191,6 +193,22 @@ class TestTheCommand(Planted):
         self.assertIn("MOVIDO", out)
         self.assertIn("stale", out)
 
+    def test_a_period_keyed_table_from_a_later_sweep_is_red_when_it_drifts(self):
+        acta_text = "from fractions import Fraction as F\n\nTECHOS = {720: F(4, 15)}\n"
+        manifest, source = self.plant(
+            acta_text,
+            anchors=[{"kind": "ceiling", "period": 720, "margin": "4/15"}],
+        )
+        rc, out = run("verify-acta", str(manifest), "--source", str(source))
+        self.assertEqual(rc, 0)
+        manifest, source = self.plant(
+            acta_text.replace("F(4, 15)", "F(4, 13)"),
+            anchors=[{"kind": "ceiling", "period": 720, "margin": "4/15"}],
+        )
+        rc, out = run("verify-acta", str(manifest), "--source", str(source))
+        self.assertEqual(rc, 1)
+        self.assertIn("TECHOS[720].margin", out)
+
     def test_json_carries_the_source_block_and_the_subject_per_check(self):
         manifest, source = self.plant()
         rc, out = run("--json", "verify-acta", str(manifest), "--source", str(source))
@@ -201,6 +219,33 @@ class TestTheCommand(Planted):
         edge = [r for r in payload["results"] if r["kind"] == "source"]
         self.assertEqual({r["subject"] for r in edge}, {"acta"})
         self.assertEqual(edge[0]["acta"], "1/3")
+
+
+OUT_OF_SAMPLE = (720, 840, 1260, 2520)
+
+
+class TestTheOutOfSampleClaimIsOnBothEdges(unittest.TestCase):
+    """The acta claims the factorised ceiling holds above 400. Both edges.
+
+    Anchoring those rows means the package recomputes the ceiling *and* the
+    acta's written cell is re-read; a claim resting on one edge alone is a
+    citation nobody checks.
+    """
+
+    def data(self) -> dict:
+        return json.loads(Path(shipped_manifest()).read_text())
+
+    def test_the_four_periods_above_four_hundred_are_anchored(self):
+        anchored = {a["period"] for a in self.data()["anchors"]
+                    if a["kind"] == "ceiling"}
+        self.assertEqual(anchored & set(OUT_OF_SAMPLE), set(OUT_OF_SAMPLE))
+
+    def test_every_out_of_sample_anchor_is_the_ceiling_the_package_computes(self):
+        for anchor in self.data()["anchors"]:
+            if anchor["kind"] == "ceiling" and anchor["period"] in OUT_OF_SAMPLE:
+                with self.subTest(period=anchor["period"]):
+                    self.assertEqual(Fraction(anchor["margin"]),
+                                     instance_ceiling(anchor["period"]).margin)
 
 
 if __name__ == "__main__":
