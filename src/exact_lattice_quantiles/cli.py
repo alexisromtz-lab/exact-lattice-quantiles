@@ -5,7 +5,8 @@ Exit codes are part of the contract:
 ``0``  the request was answered
 ``1``  the answer is no: the margin requested is above the instance ceiling --
        impossible at any price, and the ceiling is printed so the caller learns
-       the number -- or an ``acta`` anchor does not reproduce
+       the number -- or an ``acta`` anchor does not reproduce, or a claim the
+       package makes about its own lemma is refuted by its own census
 ``2``  the margin requested exists but costs more points than the budget
 ``3``  the request itself is malformed
 ``4``  the acta could not be measured (no git, no such table, not exact): the
@@ -26,6 +27,7 @@ from .acta import (ManifestError, SourceError, inspect_source, load_manifest,
                    verify_manifest)
 from .coverage import (coverage_census, design_law, drift_law, drift_radius,
                        drift_tolerance, witness_margin)
+from .arithmetic import primes_of
 from .lattice import universe
 from .pricing import (antichain_saving_ceiling, block_catalogue,
                       block_dominance_census, block_of, block_saving,
@@ -33,7 +35,8 @@ from .pricing import (antichain_saving_ceiling, block_catalogue,
                       exactness_frontier, pair_antichain_of,
                       pair_antichain_saving, price_exact,
                       price_form_census, price_form_sweep,
-                      strong_lemma_frontier)
+                      reciprocal_prime_sum, sign_regime, sign_theorem_census,
+                      strong_lemma_frontier, worst_antichain_weight)
 from .solve import OK, InfeasibleWithinBudget, ladder, solve_lattice_schedule
 
 RC_OK = 0
@@ -346,6 +349,47 @@ def _print_strong_lemma(max_primes: int, as_json: bool) -> int:
     return RC_OK
 
 
+def _print_sign_theorem(max_period: int, as_json: bool) -> int:
+    """The surviving half of the lemma: proved where the reciprocals allow it."""
+    census = sign_theorem_census(max_period)
+    broken = (census["lemma_violations"] or census["sign_violations"]
+              or census["characterisation_mismatches"])
+    if as_json:
+        print(json.dumps(census, indent=2, sort_keys=True))
+        return RC_ABOVE_CEILING if broken else RC_OK
+    def line(label: str, value: str, note: str = "") -> str:
+        return f"  {label:<32}{value:>6}  {note}"
+
+    print("sign lemma: if no block saves, no antichain saves")
+    print(line(f"periods 2..{max_period}", str(census["periods"]), "censused"))
+    print(line("sum 1/p at most one", str(census["proven_zero"]),
+               "proved: no antichain saves any point"))
+    print(line("  the block is the heaviest", str(census["tight"]),
+               "of those, the lemma is sharp"))
+    print(line("the block saves already", str(census["block_saves"]),
+               "nothing left to prove"))
+    print(line("band, sum 1/p above one", str(census["band"]),
+               "measured only, the proof does not reach"))
+    for row in census["band_rows"]:
+        equation = "  Giuga equation" if row["band_equation"] else ""
+        print(f"    {row['period']:>6}  sum 1/p = {row['reciprocal_sum']:<10}"
+              f" period*(sum-1) = {row['excess']:<2}  block {row['block']:>3}"
+              f"  ceiling {row['ceiling']}{equation}")
+    for row in census["lemma_violations"]:
+        print(f"  VIOLATION  {row['period']}: weight {row['weight']} on "
+              f"{tuple(row['witness'])} beats the bound {row['bound']}")
+    for row in census["sign_violations"]:
+        print(f"  VIOLATION  {row['period']}: an antichain saves "
+              f"{row['ceiling']} where the block saves nothing"
+              f" ({row['regime']})")
+    for row in census["characterisation_mismatches"]:
+        print(f"  MISMATCH  {row['period']}: band without the equation "
+              f"sum 1/p = 1 + 1/period twice an odd number")
+    print(f"  lemma    {census['lemma']}")
+    print(f"  verdict  {census['sign_verdict']}")
+    return RC_ABOVE_CEILING if broken else RC_OK
+
+
 def _print_verify_acta(manifest: str, as_json: bool, source: str = "") -> int:
     """Recompute the anchors of a manifest: the boundary is a gate, not a memory."""
     try:
@@ -492,6 +536,33 @@ def _self_test() -> int:
           pair_antichain_of(180), (30, 18, 12))
     check("which save nothing at all",
           pair_antichain_saving(180) < 0, True)
+    check("the reciprocal sum of 30 is 31/30",
+          reciprocal_prime_sum(30), Fraction(31, 30))
+    check("and yet its block saves nothing, because 31 against 30 buys the "
+          "same thirty points", block_saving(30), 0)
+    check("858 is one plus its own reciprocal",
+          reciprocal_prime_sum(858), 1 + Fraction(1, 858))
+    check("so it is in the band, where no proof reaches",
+          sign_regime(858)["regime"], "band")
+    check("60 is not: its reciprocal sum is 31/30 and twice an odd number "
+          "is not what it is", sign_regime(60)["regime"], "block-saves")
+    check("36 is proved, with no band to worry about",
+          sign_regime(36)["regime"], "proven-zero")
+    check("the heaviest antichain of 36 is its block",
+          worst_antichain_weight(36), (30, (18, 12)))
+    check("the heaviest antichain of 858 weighs one more than 858 itself",
+          worst_antichain_weight(858)[0], 859)
+    check("which is exactly the bound the lemma gives, so it is sharp",
+          worst_antichain_weight(858)[0], sum(858 // p for p in primes_of(858)))
+    check("and it still saves nothing",
+          antichain_saving_ceiling(858)[0], 0)
+    census_300 = sign_theorem_census(300)
+    check("below 300 the band has exactly one member",
+          [row["period"] for row in census_300["band_rows"]], [30])
+    check("and the lemma holds on every period it covers",
+          census_300["lemma_violations"], [])
+    check("and so does the theorem behind it",
+          census_300["sign_violations"], [])
     check("the price at 1080 is 135, not 139",
           price_exact(1080, (54, 90, 135)), 135)
     try:
@@ -611,6 +682,12 @@ def build_parser() -> argparse.ArgumentParser:
              "not always the best-saving antichain")
     p_strong.add_argument("--max-primes", type=int, default=400)
 
+    p_sign = sub.add_parser(
+        "sign-theorem",
+        help="prove the sign reading of the lemma where the reciprocal prime "
+             "sum allows it, and name the band where it does not")
+    p_sign.add_argument("--max-period", type=int, default=2000)
+
     p_verify = sub.add_parser(
         "verify-acta",
         help="recompute an acta's anchors from a manifest, naming every field"
@@ -660,6 +737,8 @@ def main(argv: list[str] | None = None) -> int:
             return _print_dominance(args.max_period, args.json)
         if args.command == "strong-lemma":
             return _print_strong_lemma(args.max_primes, args.json)
+        if args.command == "sign-theorem":
+            return _print_sign_theorem(args.max_period, args.json)
         if args.command == "verify-acta":
             return _print_verify_acta(args.manifest, args.json, args.source)
     except ValueError as exc:

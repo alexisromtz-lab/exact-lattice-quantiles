@@ -30,7 +30,7 @@ from functools import lru_cache
 from itertools import combinations
 from math import gcd, isqrt, lcm
 
-from .arithmetic import divisors, primes_of
+from .arithmetic import divisors, prime_factorization, primes_of
 from .lattice import cell_widths, grids, universe
 
 _INF = 10**9
@@ -602,6 +602,221 @@ def strong_lemma_frontier(max_primes: int = 400) -> dict:
         "verdict": "the drop-one block is not the best-saving antichain",
         "crossing": crossing,
         "below": below,
+    }
+
+
+def reciprocal_prime_sum(n: int) -> Fraction:
+    """``sum(1 / p)`` over the distinct primes of ``n``, exactly.
+
+    The whole sign reading of the lemma turns on this one number.  ``30`` gives
+    ``31/30`` -- above one, and its block still saves nothing; ``858`` gives
+    ``859/858``, which is one *plus its own reciprocal*; ``2310`` gives
+    ``1171/770``.
+    """
+    if n < 2:
+        raise ValueError(f"n must be at least 2, got {n}")
+    total = Fraction(0)
+    for prime in primes_of(n):
+        total += Fraction(1, prime)
+    return total
+
+
+def two_adic(n: int) -> int:
+    """The exponent of ``2`` in ``n``, which is ``0`` for odd ``n``."""
+    if n < 1:
+        raise ValueError(f"n must be a positive integer, got {n}")
+    return dict(prime_factorization(n)).get(2, 0)
+
+
+def sign_regime(period: int) -> dict:
+    """Which of the three regimes decides the sign reading for this period.
+
+    ``sum(1/p) <= 1`` -- **proven-zero**.  No antichain of divisors of the
+    period saves a point, for every size of period: the block is the heaviest
+    antichain and even it does not save.  See :func:`sign_theorem_census` for
+    the statement this rests on.
+
+    ``sum(1/p) > 1`` and the block saves -- **block-saves**.  The reading holds
+    on its own witness, so nothing is left to prove.
+
+    ``sum(1/p) > 1`` and the block saves nothing -- **band**.  The single
+    remaining surface, and it is a Diophantine one: writing the block's saving
+    as ``(sum(period / p) - period - odd_block) / 2`` with ``odd_block`` in
+    ``{0, 1}``, the band is entered only when ``period * (sum(1/p) - 1) <= 1``,
+    which for an even period means exactly ``sum(1/p) = 1 + 1/period`` with the
+    period twice an odd number.  Those three members below ``2000`` are ``30``,
+    ``858`` and ``1722`` -- and their equation is the Giuga equation
+    ``sum(1/p) - prod(1/p) = 1``, because for a squarefree period ``1/period``
+    is ``prod(1/p)``.
+
+    An odd period has a wider block -- every ``period / p`` is odd, so the
+    slack is ``omega - 1`` instead of ``1`` -- and the characterisation is
+    therefore reported as ``None`` there: its band would need
+    ``period * (sum(1/p) - 1) <= omega - 1``, an inequality no odd period is
+    known to satisfy and none satisfies below the census limit.
+    """
+    if period < 2:
+        raise ValueError(f"period must be at least 2, got {period}")
+    primes = primes_of(period)
+    reciprocal = reciprocal_prime_sum(period)
+    block = block_saving(period)
+    exact_band = reciprocal == 1 + Fraction(1, period)
+    twos = two_adic(period)
+    if reciprocal <= 1:
+        regime = "proven-zero"
+    elif block > 0:
+        regime = "block-saves"
+    else:
+        regime = "band"
+    even_and_composite = period % 2 == 0 and len(primes) >= 2
+    return {
+        "period": period,
+        "primes": list(primes),
+        "reciprocal_sum": str(reciprocal),
+        "excess": str(period * (reciprocal - 1)),
+        "block": block,
+        "two_adic": twos,
+        "band_equation": exact_band,
+        "characterised": ((exact_band and twos == 1)
+                          if even_and_composite else None),
+        "regime": regime,
+    }
+
+
+def worst_antichain_weight(period: int) -> tuple[int, tuple[int, ...]]:
+    """The largest ``sum(a)`` over antichains of proper divisors with lcm ``period``.
+
+    Proper means ``2 <= a <= period // 2``: the period itself is an antichain of
+    one element, it weighs ``period``, and it saves nothing, so admitting it
+    would make the quantity say nothing.
+
+    This is the quantity the lemma bounds.  A saving is
+    ``(sum(a) - period - odd_slack) / 2``, so once ``sum(a)`` cannot exceed the
+    weight of the drop-one block -- which is ``sum(period // p)`` -- the block
+    is the *heaviest* antichain, and a period whose block saves nothing has no
+    saving antichain at all.  :func:`sign_theorem_census` reports where the
+    maximum meets that bound, which is the sharpness of the inequality and not
+    an accident of the search.
+    """
+    if period < 2:
+        raise ValueError(f"period must be at least 2, got {period}")
+    candidates = tuple(sorted((d for d in divisors(period)
+                               if 2 <= d <= period // 2), reverse=True))
+    n = len(candidates)
+    suffix = [0] * (n + 1)
+    for i in range(n - 1, -1, -1):
+        suffix[i] = suffix[i + 1] + candidates[i]
+    best = [0, ()]
+
+    def walk(start: int, chosen: list[int], merged: int, total: int) -> None:
+        if merged == period and total > best[0]:
+            best[0], best[1] = total, tuple(chosen)
+        if start >= n or total + suffix[start] <= best[0]:
+            return
+        for j in range(start, n):
+            d = candidates[j]
+            if any(d % c == 0 or c % d == 0 for c in chosen):
+                continue
+            chosen.append(d)
+            walk(j + 1, chosen, _lcm(merged, d), total + d)
+            chosen.pop()
+
+    walk(0, [], 1, 0)
+    return best[0], best[1]
+
+
+def sign_theorem_census(limit: int = 2000) -> dict:
+    """The sign reading of the lemma, proved where it is provable and measured elsewhere.
+
+    The lemma the closed form rests on says: if no block saves, no antichain
+    saves.  Half of it is a theorem.
+
+    *Lemma.*  If ``sum(1/p) <= 1`` over the primes of ``period`` and ``C`` is an
+    antichain of ``period``-smooth integers above one, then
+    ``sum(1/c for c in C) <= sum(1/p)``.  By induction on the largest prime
+    ``q``: split ``C`` by the exact power of ``q`` it carries.  Dividing by
+    ``q^k`` preserves comparability, so each slice is an antichain of
+    ``Q``-smooth integers with ``Q`` the primes below ``q``, and the hypothesis
+    gives ``sum(slice) <= q**-k * sum(1/p for p in Q)``; summing the geometric
+    series gives ``sum(1/p for p in Q) * q / (q - 1)``, and
+    ``sum(1/p for p in Q) <= 1 - 1/q`` is exactly what ``sum(1/p) <= 1`` leaves
+    at the largest prime.  Equality holds for the drop-one block, so the lemma
+    is sharp.
+
+    *Theorem.*  Writing ``c = period / a`` and ``sum(a) = period * sum(1/c)``,
+    the lemma gives ``sum(a) <= sum(period / p)``; a saving is
+    ``(sum(a) - period - odd_slack) / 2`` with ``odd_slack`` at most one, so
+    ``sum(a) <= period`` would already leave it non-positive, and the lemma
+    forces the same conclusion for every size of period.  Integer arithmetic
+    then does the rest: a quantity strictly below ``1/2`` and integral is at
+    most zero.
+
+    The census verifies the two halves against each other -- the maximum weight
+    of :func:`worst_antichain_weight` against the block's weight, and the
+    exhaustive ceiling of :func:`antichain_saving_ceiling` against the
+    theorem's zero -- and reports the band on its own, because the band is the
+    one place where the proof does not reach and a measurement is all there is.
+    """
+    if limit < 2:
+        raise ValueError(f"limit must be at least 2, got {limit}")
+    proven = band = block_saves = tight = 0
+    band_rows: list[dict] = []
+    lemma_violations: list[dict] = []
+    sign_violations: list[dict] = []
+    mismatches: list[dict] = []
+    for period in range(2, limit + 1):
+        row = sign_regime(period)
+        regime = row["regime"]
+        if regime == "block-saves":
+            block_saves += 1
+            continue
+        if regime == "band":
+            band += 1
+            if row["characterised"] is False:
+                mismatches.append({"period": period,
+                                   "reciprocal_sum": row["reciprocal_sum"],
+                                   "two_adic": row["two_adic"],
+                                   "block": row["block"]})
+            ceiling, witness = antichain_saving_ceiling(period)
+            row = {**row, "ceiling": ceiling, "witness": list(witness)}
+            band_rows.append(row)
+            if ceiling > 0:
+                sign_violations.append({"period": period, "ceiling": ceiling,
+                                        "witness": list(witness),
+                                        "regime": "band"})
+            continue
+        proven += 1
+        weight, heavy = worst_antichain_weight(period)
+        bound = sum(period // p for p in primes_of(period))
+        if weight > bound:
+            lemma_violations.append({"period": period, "weight": weight,
+                                     "bound": bound, "witness": list(heavy)})
+        elif weight == bound:
+            tight += 1
+        ceiling, witness = antichain_saving_ceiling(period)
+        if ceiling > 0:
+            sign_violations.append({"period": period, "ceiling": ceiling,
+                                    "witness": list(witness),
+                                    "regime": "proven-zero"})
+    return {
+        "limit": limit,
+        "periods": max(0, limit - 1),
+        "proven_zero": proven,
+        "tight": tight,
+        "band": band,
+        "block_saves": block_saves,
+        "band_rows": band_rows,
+        "lemma_violations": lemma_violations,
+        "sign_violations": sign_violations,
+        "characterisation_mismatches": mismatches,
+        "lemma": "sum(1/p) <= 1 implies sum(1/c) <= sum(1/p) over antichains "
+                 "of period-smooth integers above one",
+        "verdict": "the sign reading is proved where the reciprocal sum is at "
+                   "most one and measured where the block is empty-handed"
+                   if not lemma_violations else "the lemma is false",
+        "sign_verdict": "no antichain saves where the theorem forbids it"
+                        if not sign_violations
+                        else "an antichain saves where the theorem forbids it",
     }
 
 

@@ -38,6 +38,7 @@ jobs:
           exact-lattice-quantiles census 2 400
           exact-lattice-quantiles dominance --max-period 2000
           exact-lattice-quantiles strong-lemma
+          exact-lattice-quantiles sign-theorem
           exact-lattice-quantiles drift 180 --max-cost 64 --probes 4
           exact-lattice-quantiles solve 180 --max-cost 64 --probes 4 --min-margin 1/3
           exact-lattice-quantiles verify-acta src/exact_lattice_quantiles/manifests/acta_margen_secciones_20261125.json
