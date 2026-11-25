@@ -1,0 +1,55 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install .
+      - name: Suite
+        run: python -m unittest discover -s tests -t . -v
+      - name: Self-test and every documented command
+        run: |
+          exact-lattice-quantiles --self-test
+          exact-lattice-quantiles ceiling 180
+          exact-lattice-quantiles ladder 180
+          exact-lattice-quantiles designs 180
+          exact-lattice-quantiles price 180
+          exact-lattice-quantiles prices
+          exact-lattice-quantiles census 2 400
+          exact-lattice-quantiles drift 180 --max-cost 64 --probes 4
+          exact-lattice-quantiles solve 180 --max-cost 64 --probes 4 --min-margin 1/3
+      - name: Exit codes are part of the contract
+        shell: bash
+        run: |
+          check() {
+            local want=$1; shift
+            set +e; "$@" > /dev/null 2>&1; local got=$?; set -e
+            if [ "$got" -ne "$want" ]; then
+              echo "::error::$* returned $got, contract says $want"
+              return 1
+            fi
+            echo "ok rc=$got  $*"
+          }
+          check 1 exact-lattice-quantiles solve 180 --max-cost 1000 --probes 8 --min-margin 2/5
+          check 2 exact-lattice-quantiles solve 180 --max-cost 40 --probes 4
+          check 3 exact-lattice-quantiles bogus
