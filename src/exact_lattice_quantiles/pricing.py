@@ -176,6 +176,13 @@ class PriceFormCensus:
 def price_form_census(period: int, reduced: bool = True) -> PriceFormCensus:
     """Census the closed form against the exact minimum, over every request.
 
+    The cost is ``O(2^|U| * |grids|)``, and the size of ``U`` is what decides
+    whether the question is affordable at all: over ``U(T)`` the masks are
+    ``2^12`` for ``180`` and ``2^17`` for ``360``; over every divisor they are
+    ``2^17`` for ``180`` and ``2^23`` for ``360``, which is where this
+    implementation stops.  A census that cannot be run is not a census: the
+    universes are named so that the caller knows which one was measured.
+
     A *frontier* is the set of maximal divisors of a request.  Requests sharing
     a frontier share the closed-form price, so ``frontiers`` counts how many
     distinct answers the formula can give, and a frontier *saves* when the
