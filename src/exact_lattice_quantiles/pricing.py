@@ -27,6 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from fractions import Fraction
 from functools import lru_cache
+from math import gcd
 
 from .lattice import cell_widths, grids, universe
 
@@ -261,3 +262,102 @@ def price_form_census(period: int, reduced: bool = True) -> PriceFormCensus:
         cheapest_cover=best[full],
         one_grid=one_grid,
     )
+
+
+def _lcm(a: int, b: int) -> int:
+    return a * b // gcd(a, b)
+
+
+def best_block_saving(needed: tuple[int, ...]) -> tuple[int, tuple[int, ...], int, int]:
+    """Largest saving any block inside ``needed`` can make, by exact search.
+
+    Returns ``(saving, witness, bound, cover)``: ``saving`` is how many points
+    the closed form overcharges on ``witness``, ``bound`` is that closed-form
+    price and ``cover`` is the price of the single grid ``lcm(witness)``.  A
+    saving of zero means no block is cheaper than its parts.
+
+    The witness is an **antichain**.  The naive predicate -- "any subset whose
+    least common multiple costs less than its parts" -- is wrong: if ``b``
+    divides ``b'`` and both are in the subset, the grid ``b'`` already covers
+    ``b``, so ``b // 2`` is charged twice.  Over the seventeen divisors of
+    ``180`` that predicate reports a deficit of ``180`` points with the whole
+    universe as its witness; restricted to antichains it reports ``3`` with
+    ``{36, 60, 90}``, which is the witness the exact DP also finds, and
+    ``180 // 2 = 90`` is the price of the one grid that covers it.
+
+    Three is the smallest block worth searching: two divisors never save, since
+    ``lcm(a, b) >= a + b`` whenever both are at least two, so a pair always
+    costs at least as much merged as it costs apart.
+    """
+    N = tuple(sorted(set(needed)))
+    n = len(N)
+    suffix = [0] * (n + 1)
+    for i in range(n - 1, -1, -1):
+        suffix[i] = suffix[i + 1] + N[i] // 2
+    best = [0, (), 0, 0]
+
+    def walk(start: int, chosen: list[int], merged: int, total: int) -> None:
+        if len(chosen) >= 3 and total - merged // 2 > best[0]:
+            best[0], best[1] = total - merged // 2, tuple(chosen)
+            best[2], best[3] = total, merged // 2
+        # Nothing reachable from here can pay less than the merged grid.
+        if start >= n or total + suffix[start] <= merged // 2:
+            return
+        for j in range(start, n):
+            d = N[j]
+            if any(d % c == 0 or c % d == 0 for c in chosen):
+                continue
+            merged_with = _lcm(merged, d)
+            if total + d // 2 + suffix[j + 1] <= merged_with // 2:
+                continue
+            chosen.append(d)
+            walk(j + 1, chosen, merged_with, total + d // 2)
+            chosen.pop()
+
+    walk(0, [], 1, 0)
+    return best[0], best[1], best[2], best[3]
+
+
+def exactness_frontier(max_period: int = 8000) -> dict:
+    """The first even period whose reduced universe the closed form misprices.
+
+    The census this package published says the closed form *is* the minimum
+    over ``U(T)`` for all 200 even periods to 400.  True, and bounded: the
+    first period where it fails is ``1080``, where ``{54, 90, 135}`` costs
+    ``139`` bought separately and ``135`` as the single grid ``270``.  A census
+    without its boundary reads as a law, and the boundary is not where a static
+    reading predicts it -- ``2520`` is the same block with ``m = 9`` at more
+    than twice the period.
+
+    The witness is certified by the cover, not by a DP: ``{lcm(witness)}`` is a
+    legal design that covers the block, so its price is an upper bound the DP
+    would only confirm.  At ``1080`` the DP is ``2^23`` masks and at ``2520``
+    it is ``2^32``; the certificate has to survive where the search cannot run.
+    """
+    breaks: list[tuple[int, int, tuple[int, ...], int, int]] = []
+    for period in range(2, max_period + 1, 2):
+        saving, witness, bound, cover = best_block_saving(universe(period))
+        if saving > 0:
+            breaks.append((period, saving, witness, bound, cover))
+    scanned = max_period // 2
+    if not breaks:
+        return {"period": None, "saving": 0, "witness": (), "bound": 0,
+                "cover": 0, "grid": 0, "breaks": 0, "scanned": scanned}
+    period, saving, witness, bound, cover = breaks[0]
+    return {
+        "period": period,
+        "saving": saving,
+        "witness": witness,
+        "bound": bound,
+        "cover": cover,
+        "grid": _lcm_grid(witness),
+        "breaks": len(breaks),
+        "scanned": scanned,
+    }
+
+
+def _lcm_grid(witness: tuple[int, ...]) -> int:
+    merged = 1
+    for d in witness:
+        merged = _lcm(merged, d)
+    return merged
