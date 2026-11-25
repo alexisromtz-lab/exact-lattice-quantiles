@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "exact-lattice-quantiles"
+version = "0.1.0"
+description = "Exact phase margin and cheapest feasible design for multi-rate periodic sampling, in rational arithmetic with zero dependencies."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Alexis Roman" }]
+keywords = [
+    "sampling",
+    "lattice",
+    "scheduling-algorithms",
+    "exact-arithmetic",
+    "rational",
+    "hypergraph",
+    "set-cover",
+    "telemetry",
+    "cron",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Distributed Computing",
+]
+dependencies = []
+
+[project.scripts]
+exact-lattice-quantiles = "exact_lattice_quantiles.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/alexisromtz-lab/exact-lattice-quantiles"
+Source = "https://github.com/alexisromtz-lab/exact-lattice-quantiles"
+
+[tool.setuptools.packages.find]
+where = ["src"]

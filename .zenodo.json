@@ -1,0 +1,27 @@
+{
+  "title": "Exact Hypergraph Duality for Multi-Rate Lattice Sampling under Common-Mode Drift",
+  "description": "<p>A periodic system with period <code>T</code> is sampled by grids (the divisors of <code>T</code> above one), and each grid seats the divisors of <code>T</code> in blocks of section classes. This package answers, in exact rational arithmetic and with zero dependencies:</p><ul><li>the maximum phase margin of a period, <code>nu(T) = min_{d in U(T)} psi(d)/d</code>, in closed form from the prime factorization of <code>T</code>;</li><li>the cheapest design reaching a requested margin, as an exact hypergraph coverage problem solved by dynamic programming;</li><li>the fewest shared sections that hold that margin, as an exact set cover over the divisor universe;</li><li>a formal infeasibility certificate for any margin above <code>nu(T)</code>, which no budget can buy.</li></ul><p>Every value is an <code>int</code> or a <code>fractions.Fraction</code>. No floating point appears anywhere, so no optimum is decided by rounding.</p>",
+  "upload_type": "software",
+  "license": "MIT",
+  "access_right": "open",
+  "creators": [
+    {
+      "name": "Roman, Alexis",
+      "orcid": "0009-0001-9116-075X"
+    }
+  ],
+  "keywords": [
+    "exact arithmetic",
+    "hypergraph coverage",
+    "lattice sampling",
+    "multi-rate scheduling",
+    "phase margin"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/alexisromtz-lab/exact-lattice-quantiles",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    }
+  ]
+}

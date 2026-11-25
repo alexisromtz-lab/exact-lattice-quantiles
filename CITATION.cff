@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Exact Hypergraph Duality for Multi-Rate Lattice Sampling under Common-Mode Drift"
+abstract: >-
+  A periodic system with period T is sampled by grids, the divisors of T above
+  one, and each grid seats the divisors of T in blocks of section classes. This
+  package computes, in exact rational arithmetic, the maximum phase margin any
+  design of a given period can attain (a closed-form function of T, not a
+  constant), the cheapest design attaining a requested margin (an exact
+  hypergraph coverage problem), and the fewest shared sections that hold that
+  margin. Margins above the instance ceiling are reported as infeasible at any
+  cost, by duality rather than by search failure.
+authors:
+  - family-names: "Roman"
+    given-names: "Alexis"
+    orcid: "https://orcid.org/0009-0001-9116-075X"
+type: software
+license: MIT
+repository-code: "https://github.com/alexisromtz-lab/exact-lattice-quantiles"
+keywords:
+  - exact arithmetic
+  - hypergraph coverage
+  - lattice sampling
+  - multi-rate scheduling
+  - phase margin
+  - rational arithmetic
+version: 0.1.0
+date-released: "2026-11-25"

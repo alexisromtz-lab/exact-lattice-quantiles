@@ -1,0 +1,88 @@
+"""Exact lattice quantiles: provable phase margin for multi-rate sampling.
+
+A periodic system with period ``T`` is sampled by grids -- the divisors of
+``T`` above one -- and each grid cuts the phase into ``T / 2`` section classes.
+A design is a set of grids; its margin is how far a section can drift before
+two divisors are confused.
+
+Two facts make this a solved problem instead of a tuning exercise.
+
+**The ceiling belongs to the instance.**  ``nu(T) = min_{d in U(T)} mass(d)/d``
+in closed form, no search.  ``1/3`` is not a law: 167 of the 200 even periods
+below 400 exceed it, 30 hit it and 3 fall below.
+
+**The bound is a coverage condition, not a sample.**  "margin at least ``v``"
+is "the grids whose blocks are at least ``v`` wide cover the universe"; its
+minimum cost is a DP, and when that hypergraph has no cover, ``v`` is
+impossible at any price.
+
+Quick start::
+
+    from exact_lattice_quantiles import instance_ceiling, solve_lattice_schedule
+
+    ceiling = instance_ceiling(180)          # 1/3, tied by divisor 6
+    schedule = solve_lattice_schedule(180, max_cost=64, k_probes=4, min_margin="1/3")
+    schedule.cost                            # 64
+    schedule.design                          # (4, 6, 10, 12, 15, 18, 20, 45)
+    schedule.witness_margin                  # 1/3
+
+Every number is an ``int`` or a ``fractions.Fraction``.  No floats, no
+dependencies.
+"""
+
+from __future__ import annotations
+
+from .arithmetic import (divisors, dropped_primes, euler_phi, mass,
+                         prime_factorization, prime_product, primes_of, radical)
+from .ceiling import (Ceiling, InfeasibleAboveInstanceCeiling,
+                      ceiling_by_product, ceiling_by_scan, ceiling_census,
+                      instance_ceiling)
+from .coverage import (best_probes, design_margin, drift_radius,
+                       margin_ladder, minimum_cost_design, minimum_probes,
+                       witness_margin)
+from .lattice import (carriers, cell_intervals, cell_width, cell_widths, grids,
+                      seats, universe, universe_from_factorization, widths)
+from .solve import (OK, PROBES_INSUFFICIENT, InfeasibleWithinBudget, Schedule,
+                    ladder, solve_lattice_schedule)
+
+__version__ = "0.1.0"
+
+__all__ = [
+    "Ceiling",
+    "InfeasibleAboveInstanceCeiling",
+    "InfeasibleWithinBudget",
+    "OK",
+    "PROBES_INSUFFICIENT",
+    "Schedule",
+    "__version__",
+    "best_probes",
+    "carriers",
+    "ceiling_by_product",
+    "ceiling_by_scan",
+    "ceiling_census",
+    "cell_intervals",
+    "cell_width",
+    "cell_widths",
+    "design_margin",
+    "divisors",
+    "drift_radius",
+    "dropped_primes",
+    "euler_phi",
+    "grids",
+    "instance_ceiling",
+    "ladder",
+    "margin_ladder",
+    "mass",
+    "minimum_cost_design",
+    "minimum_probes",
+    "prime_factorization",
+    "prime_product",
+    "primes_of",
+    "radical",
+    "seats",
+    "solve_lattice_schedule",
+    "universe",
+    "universe_from_factorization",
+    "widths",
+    "witness_margin",
+]
