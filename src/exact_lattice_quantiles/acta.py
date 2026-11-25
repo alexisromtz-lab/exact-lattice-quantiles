@@ -28,8 +28,13 @@ Anchor kinds.  Each states what it needs and what it may add::
     design    period, max_cost, probes, margin
                                         cost, design, probes_needed,
                                         robust_margin, verdict
+    ladder    period, design, probes, margin
     frontier  period                    max_period, reduced, witness, bound,
                                         cover, saving, breaks
+
+``ladder`` takes the design as an **input**, unlike ``design`` where ``design``
+is an echoed output: a row of a margin ladder is quoted per ``(design, k)``, and
+the design is the half of that pair the manifest has to state.
 
 ``cost_cover`` is the cheapest design that covers the universe at margin ``0``;
 ``cost_ceiling`` is the cheapest that reaches the ceiling itself.  Both are
@@ -47,12 +52,12 @@ from pathlib import Path
 from typing import Sequence
 
 from .ceiling import InfeasibleAboveInstanceCeiling, instance_ceiling
-from .lattice import cell_widths, grids, universe
-from .coverage import minimum_cost_design
+from .lattice import cell_widths, grids, seats, universe
+from .coverage import best_probes, covered_divisors, minimum_cost_design, witness_margin
 from .pricing import exactness_frontier
 from .solve import InfeasibleWithinBudget, solve_lattice_schedule
 
-KINDS = ("ceiling", "design", "frontier")
+KINDS = ("ceiling", "design", "ladder", "frontier")
 
 
 class ManifestError(Exception):
@@ -214,9 +219,36 @@ def _check_frontier(index: int, anchor: dict) -> list[Check]:
     return checks
 
 
+def _check_ladder(index: int, anchor: dict) -> list[Check]:
+    """One row of a margin ladder: the margin ``k`` shared sections buy on a design.
+
+    The design is stated by the anchor rather than looked up, because a ladder
+    row is a claim about a *fixed* design; a row that let the design float would
+    be the cheapest-design question the ``design`` kind already answers.
+    """
+    where = f"anchor {index} (ladder)"
+    period = _period(_require(anchor, "period", where), f"{where}: period")
+    design = _ints(_require(anchor, "design", where), f"{where}: design")
+    probes = _int(_require(anchor, "probes", where), f"{where}: probes")
+    margin = _exact(_require(anchor, "margin", where), f"{where}: margin")
+    U = universe(period)
+    carried = {d for M in design for d, _, _ in seats(M)}
+    missing = [d for d in U if d not in carried]
+    if missing:
+        raise ManifestError(
+            f"{where}: the design carries no block for {missing} of U({period}), "
+            "so its ladder would report the margin of a divisor nobody holds")
+    reachable, witness = best_probes(design, U, probes)
+    held: Fraction | None = None
+    if witness and set(covered_divisors(design, witness, U)) == set(U):
+        held = reachable
+    return [Check(index, "ladder", "margin", margin, held)]
+
+
 _CHECKERS = {
     "ceiling": _check_ceiling,
     "design": _check_design,
+    "ladder": _check_ladder,
     "frontier": _check_frontier,
 }
 

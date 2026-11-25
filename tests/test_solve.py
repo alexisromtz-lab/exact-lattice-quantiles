@@ -36,11 +36,60 @@ class TestTheThreeOutcomes(unittest.TestCase):
         self.assertEqual(s.verdict, OK)
         self.assertEqual(s.witness_margin, Fraction(1, 6))
 
-    def test_zero_margin_only_buys_coverage(self):
-        s = solve_lattice_schedule(180, max_cost=47, k_probes=1)
-        self.assertEqual((s.cost, s.design), (47, (12, 18, 20, 45)))
-        self.assertEqual(s.probes_needed, 0)
+    def test_zero_margin_is_four_sections_and_not_zero(self):
+        # Zero required margin used to be published as ``probes_needed == 0``
+        # and ``verdict == OK``: the count came from a shortcut that never asked
+        # whether a section holds its divisor, so "no section is needed" was
+        # reported for a design that needs four.  Zero margin buys coverage, and
+        # coverage is exactly what four sections cost.
+        for k in (1, 2, 3):
+            s = solve_lattice_schedule(180, max_cost=47, k_probes=k)
+            self.assertEqual((s.cost, s.design), (47, (12, 18, 20, 45)))
+            self.assertEqual(s.probes_needed, 4)
+            self.assertEqual(s.verdict, PROBES_INSUFFICIENT)
+            self.assertFalse(s.meets_requirement)
+            # Nothing is held, so there is no margin to report -- which is not
+            # the same statement as a margin of zero.
+            self.assertIsNone(s.witness_margin)
+            self.assertIsNone(s.robust_margin)
+            self.assertEqual(len(s.uncovered), 12)
+
+        s = solve_lattice_schedule(180, max_cost=47, k_probes=4)
         self.assertEqual(s.verdict, OK)
+        self.assertEqual(s.probes_needed, 4)
+        self.assertEqual(s.uncovered, ())
+        self.assertEqual(s.witness_margin, Fraction(1, 15))
+
+    def test_no_schedule_is_met_without_covering_its_divisors(self):
+        # The dangerous direction: a schedule that does not hold some divisor
+        # must never read as meeting its requirement, whatever the margin asked.
+        for period in (12, 30, 60, 180):
+            for k in (1, 2, 3):
+                s = solve_lattice_schedule(period, max_cost=10 ** 6, k_probes=k)
+                if s.uncovered:
+                    self.assertFalse(s.meets_requirement, (period, k))
+                    self.assertIsNone(s.witness_margin, (period, k))
+                else:
+                    self.assertTrue(s.meets_requirement, (period, k))
+
+
+    def test_a_cover_that_is_paid_for_is_always_placed(self):
+        # The belt in ``solve_lattice_schedule``: ``best_probes`` maximises the
+        # *margin*, and at margin zero a subset that misses a divisor is
+        # indistinguishable from one that holds it with no slack.  Where the
+        # budget pays for a cover, the sections placed must therefore be a
+        # cover -- measured over the cheap design of every even period up to 60,
+        # at the count the design needs and one more (224 combinations up to
+        # 120 agree).
+        for period in range(2, 61, 2):
+            need = solve_lattice_schedule(period, max_cost=10 ** 6,
+                                          k_probes=64).probes_needed
+            self.assertIsNotNone(need, period)
+            for k in (need, need + 1):
+                s = solve_lattice_schedule(period, max_cost=10 ** 6, k_probes=k)
+                self.assertEqual(s.uncovered, (), (period, k))
+                self.assertEqual(s.verdict, OK, (period, k))
+                self.assertIsNotNone(s.witness_margin, (period, k))
 
 
 class TestTwoInfeasibilities(unittest.TestCase):

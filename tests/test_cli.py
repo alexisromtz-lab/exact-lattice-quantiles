@@ -78,6 +78,23 @@ class TestExitCodes(unittest.TestCase):
                     "--min-margin", "1/0")
         self.assertEqual(rc, 3)
 
+    def test_a_schedule_not_delivered_is_not_an_exit_zero(self):
+        # Both non-OK verdicts return an object that names the shortfall.  Exit
+        # 0 would say "we have a schedule" to a shell caller, and the margins
+        # in that object are ``None``, not a measured zero.
+        rc, out = run("solve", "180", "--max-cost", "47", "--probes", "2")
+        self.assertEqual(rc, 4)
+        self.assertIn("PROBES_INSUFFICIENT", out)
+        self.assertIn("NO_MEDIDO", out)
+        rc, out = run("--json", "solve", "180", "--max-cost", "47",
+                      "--probes", "2")
+        self.assertEqual(rc, 4)
+        payload = json.loads(out)
+        self.assertIsNone(payload["witness_margin"])
+        self.assertIsNone(payload["robust_margin"])
+        self.assertEqual(payload["probes_needed"], 4)
+        self.assertEqual(len(payload["uncovered"]), 12)
+
 
 class TestSolveOutput(unittest.TestCase):
     def test_solve_prints_the_design_and_the_verdict(self):

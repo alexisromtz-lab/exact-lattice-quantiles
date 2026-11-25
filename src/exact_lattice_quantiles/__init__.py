@@ -37,10 +37,10 @@ from .arithmetic import (divisors, dropped_primes, euler_phi, mass,
 from .ceiling import (Ceiling, InfeasibleAboveInstanceCeiling,
                       ceiling_by_product, ceiling_by_scan, ceiling_census,
                       instance_ceiling)
-from .coverage import (DesignLaw, DriftLaw, best_probes, design_law,
-                       design_margin, drift_law, drift_radius, drift_tolerance,
-                       margin_ladder, minimum_cost_design, minimum_probes,
-                       witness_margin)
+from .coverage import (DesignLaw, DriftLaw, best_probes, covered_divisors,
+                       design_law, design_margin, drift_law, drift_radius,
+                       drift_tolerance, margin_ladder, minimum_cost_design,
+                       minimum_probes, witness_margin)
 from .lattice import (carriers, cell_intervals, cell_width, cell_widths, grids,
                       seats, universe, universe_from_factorization, widths)
 from .pricing import (PriceFormCensus, antichain_saving_ceiling,
@@ -52,8 +52,9 @@ from .pricing import (PriceFormCensus, antichain_saving_ceiling,
                       pair_antichain_saving, price_exact, price_form_census,
                       price_form_sweep, price_one_per_maximal,
                       strong_lemma_frontier)
-from .solve import (OK, PROBES_INSUFFICIENT, InfeasibleWithinBudget, Schedule,
-                    ladder, solve_lattice_schedule)
+from .solve import (OK, PROBES_INSUFFICIENT, UNDERCOVERED,
+                    InfeasibleWithinBudget, Schedule, ladder,
+                    solve_lattice_schedule)
 
 __version__ = "0.9.0"
 
@@ -68,10 +69,12 @@ __all__ = [
     "InfeasibleWithinBudget",
     "OK",
     "PROBES_INSUFFICIENT",
+    "UNDERCOVERED",
     "PriceFormCensus",
     "Schedule",
     "__version__",
     "best_block_saving",
+    "covered_divisors",
     "block_catalogue",
     "block_of",
     "block_saving",

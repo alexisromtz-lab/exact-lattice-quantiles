@@ -423,7 +423,7 @@ admissible drift spans that contains zero. An earlier version of
 divisor at `delta = 0`, and drift can capture. The under-report is asserted in
 `tests/test_coverage.py` against the old formula, so it cannot come back.
 
-## What the three exit codes mean
+## What the exit codes mean
 
 The distinction is the point: an infeasible margin cannot be bought, an
 over-budget one can.
@@ -434,10 +434,24 @@ over-budget one can.
 | 1 | `InfeasibleAboveInstanceCeiling` | above `nu(T)`: no design at **any** cost |
 | 2 | `InfeasibleWithinBudget` | exists, but `cheapest > max_cost` |
 | 3 | `ValueError` (CLI) | malformed request — bad fraction, bad flag |
+| 4 | — (CLI) | the verdict is not `OK`: no schedule was delivered |
 
 `PROBES_INSUFFICIENT` is a verdict on the returned `Schedule`, not an
 exception: the design was found, the sections were not enough, and the object
-says by how much (`probes_needed`, `witness_margin`).
+says by how much (`probes_needed`). The CLI prints the object and exits `RC 4`
+— a caller in a shell must not read "we have a schedule" from a schedule that
+was not delivered.
+
+`UNDERCOVERED` is the third verdict and the one that is not about the margin at
+all: the sections placed do not land inside every divisor of the universe, so
+the margins that would be reported are ``0`` for a divisor nobody holds — an
+absent measurement wearing the value of a measured zero. From 0.9.0 such a
+schedule carries `verdict = "UNDERCOVERED"` and the divisors it missed in
+`uncovered`, and **both `witness_margin` and `robust_margin` are `None`**, in
+the object and in `as_dict()`. The CLI prints `NO_MEDIDO` for them and exits
+`RC 4`. Before 0.9.0 the same object reported `0` and, when the demanded margin
+was `0`, called itself `OK` with an empty section set; a caller that reads a
+margin must now read `None` first.
 
 ## Four margins, and which one to quote
 
@@ -566,7 +580,7 @@ divergence names the quantity instead of the file.
 ```
 exact-lattice-quantiles verify-acta \
   src/exact_lattice_quantiles/manifests/acta_margen_secciones_20261125.json
-# 84 checks over 24 anchors: 84 reproduce, 0 divergent        RC 0
+# 90 checks over 30 anchors: 90 reproduce, 0 divergent        RC 0
 ```
 
 An anchor is one of three kinds:
@@ -575,6 +589,7 @@ An anchor is one of three kinds:
 | --- | --- | --- |
 | `ceiling` | `period`, `margin` | `critical_divisor`, `grids`, `universe_size`, `cost_cover`, `cost_ceiling` |
 | `design` | `period`, `max_cost`, `probes`, `margin` | `cost`, `design`, `probes_needed`, `robust_margin`, `verdict` |
+| `ladder` | `period`, `design`, `probes`, `margin` | — |
 | `frontier` | `period` | `max_period`, `reduced`, `witness`, `bound`, `cover`, `saving`, `breaks`, `scanned` |
 
 Exit code `1` means the library and the manifest disagree: the manifest is
@@ -605,7 +620,7 @@ its blob, its line count, and the tables the manifest quotes:
 
 ```
 exact-lattice-quantiles verify-acta <manifest> --source <acta.py>
-# 163 checks over 24 anchors: 163 reproduce, 0 divergent        RC 0
+# 169 checks over 30 anchors: 169 reproduce, 0 divergent        RC 0
 ```
 
 The acta is **parsed, not imported**: the reader walks the module's AST and
@@ -630,7 +645,7 @@ unmeasured cell is a blind spot with a name.
 ### The tables the boundary cannot see, and the one that looked like a defect
 
 Twelve tables in that acta are keyed by period and written as literals, so the
-reader can evaluate all twelve. Four of them were quoted. Declaring the rest is
+reader can evaluate all twelve. Seven of them are quoted. Declaring the rest is
 not mechanical, and one of them is a trap worth writing down.
 
 Closed by declaring them: `TECHOS_FUERA_P55`, `U_FUERA_P55` and
@@ -641,18 +656,56 @@ once: this package recomputes the ceiling for those periods, and the acta's own
 cells are re-read and compared. `RAD30_P55` is the six periods that share
 `rad(T) = 30` and do not share a ceiling, which is the point of quoting them.
 
-Deliberately **not** quoted: `ESCALERA_47` and `ESCALERA_64`. They look
-comparable — same period, same cost, a margin per `k` — and they are not. The
-acta maximises the margin in `k` shared sections over **one fixed design** of
-that cost. `solve_lattice_schedule` maximises over **every** design within the
-budget. Same numbers on the surface, two different subjects underneath, and the
-values do differ: at `k = 4` and `k = 6` on cost 47, and at `k = 2` on cost 64,
-the package reaches a margin the acta's fixed design does not. Quoting both as
-one field would have produced a divergence that looks like a bug and is a
-mismatch of questions. They are recorded in the manifest's `not_reproducible`
-list with that reason instead, along with `PASOS_P55` (an instrument
-measurement), `CAIDAS_P55` (a census over 116 universes, not a quantity of one
-period) and `FUERA_P55` (a set per period, which no column kind can hold yet).
+Partly anchored: `ESCALERA_47` and `ESCALERA_64`. The rows that do reproduce are
+anchored, as a fourth kind, `ladder` — a row states a period, the design it is
+measured on, the number of shared sections `k`, and the margin claimed. Unlike
+`design`, the design is an **input** here: a ladder row is a claim about a
+fixed design, and letting the design float would ask the question `design`
+already answers. A ladder anchor also refuses a design that carries no block for
+some divisor of the universe, because that row would report the margin of a
+divisor nobody holds. Anchored: `k = 5, 7, 8` of `ESCALERA_47` and all three
+rows of `ESCALERA_64`.
+
+The rows that are **not** quoted look comparable — same period, same cost, a
+margin per `k` — and they are not, for a reason that took measuring: the two
+sides count the section space in different currencies. `ESCALERA_47`'s `k = 3`
+row is not a margin at all — that design needs four sections even with no slack,
+so at three there is no schedule whose margin could be quoted.
+
+A block of `a` classes measures `2a / M` of the section circle — the period
+currency, which is what every margin here is quoted in. The acta's P52 ladder
+builds its cells as `a / (M // 2)` instead. The two agree whenever `M` is even
+and differ on an odd grid by exactly `M / (M - 1)`. On the design that carries
+`T = 180` the odd grid is 45, so its cells are stretched by `45 / 44`: on
+`M = 45` every one of the five cells differs, while on 12, 18 and 20 all are
+identical.
+
+It is not that the acta uses one design and this package uses every design — at
+cost 47 both pick `(12, 18, 20, 45)`, the same design, with the same cost. It is
+that a "shared section `q`" in the stretched reading is not the same phase in
+every grid, so sections that are shared there are not shared. Swapping only the
+currency in the acta's own `escalera_global` — nothing else — turns its ladder
+into this package's, row for row: `k = 4` goes `2/33 → 1/15`, `k = 6` goes
+`4/33 → 2/15`, and `k = 3, 5, 7, 8` are unchanged, because those rows never
+needed a section in the stretched corner. Its sibling `ESCALERA_64` — a design
+with two odd grids, 15 and 45 — reproduces here at all three of its rows
+(`1/6`, `3/10`, `1/3`), which is what makes the divergence a property of the
+two rows and not of the table: the stretcher only bites where an optimum sits
+in the stretched corner. The acta's own `asientos` computes
+`2a / M`, its own `identidad_w` asserts it, and the P54/P55 ceiling law lives in
+it — so the ladder is the one table in the acta that is in the other currency.
+The consequence is that its `k = 4` value is not an upper bound: the same cost
+buys `1/15 = 6.67 %` here against the `2/33 = 6.06 %` quoted there.
+
+192 of the 200 even universes in `2..400` carry an odd grid — only a power of
+two does not — so the two rows that move are recorded in the manifest's
+`not_reproducible` list with that reason rather than anchored — together with
+`PASOS_P55` (an instrument measurement), `CAIDAS_P55` (a census over 116
+universes, not a quantity of one period) and `FUERA_P55` (a set per period,
+which no column kind can hold yet).
+`TestTheCurrencyHasAnIndependentReferee`
+pins the currency against a referee that counts phases from `M / gcd(j, M)` and
+never consults the seat map, so the two readings cannot quietly converge again.
 
 ## Citation
 

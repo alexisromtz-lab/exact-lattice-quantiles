@@ -34,13 +34,18 @@ from .pricing import (antichain_saving_ceiling, block_catalogue,
                       pair_antichain_saving, price_exact,
                       price_form_census, price_form_sweep,
                       strong_lemma_frontier)
-from .solve import InfeasibleWithinBudget, ladder, solve_lattice_schedule
+from .solve import OK, InfeasibleWithinBudget, ladder, solve_lattice_schedule
 
 RC_OK = 0
 RC_ABOVE_CEILING = 1
 RC_OVER_BUDGET = 2
 RC_BAD_REQUEST = 3
 RC_NO_MEDIDO = 4
+
+
+def _margin(value: Fraction | None) -> str:
+    """A margin that is not measured is not a margin of zero."""
+    return "NO_MEDIDO (uncovered divisor, see below)" if value is None else str(value)
 
 
 def _fraction(text: str) -> Fraction:
@@ -107,19 +112,24 @@ def _print_solve(args: argparse.Namespace) -> int:
         return RC_OVER_BUDGET
     if args.json:
         print(json.dumps(schedule.as_dict(), indent=2, sort_keys=True))
-        return RC_OK
+        return RC_OK if schedule.verdict == OK else RC_NO_MEDIDO
     print(f"period           {schedule.period}")
     print(f"design           {list(schedule.design)}")
     print(f"cost             {schedule.cost} points (budget {schedule.max_cost})")
     print(f"design margin    {schedule.design_margin}")
     print(f"sections ({len(schedule.probes)})  {[str(q) for q in schedule.probes]}")
-    print(f"witness margin   {schedule.witness_margin}")
-    print(f"robust margin    {schedule.robust_margin}")
+    print(f"witness margin   {_margin(schedule.witness_margin)}")
+    print(f"robust margin    {_margin(schedule.robust_margin)}")
+    if schedule.uncovered:
+        print(f"uncovered        {list(schedule.uncovered)} of {len(schedule.ceiling.universe)}"
+              f" divisors -- no section lands in them, so no margin is measured")
     print(f"probes needed    {schedule.probes_needed}")
     print(f"ceiling          {schedule.ceiling.margin} "
           f"(critical divisor {schedule.ceiling.critical_divisor})")
     print(f"verdict          {schedule.verdict}")
-    return RC_OK
+    # A verdict that is not OK is a schedule not delivered: exiting 0 there
+    # would let a shell caller read "we have a schedule" from a failed one.
+    return RC_OK if schedule.verdict == OK else RC_NO_MEDIDO
 
 
 def _print_drift(args: argparse.Namespace) -> int:
@@ -136,6 +146,11 @@ def _print_drift(args: argparse.Namespace) -> int:
         return RC_OVER_BUDGET
     U = universe(schedule.period)
     Q = schedule.probes
+    if schedule.witness_margin is None:
+        print(f"UNDERCOVERED: no section lands in {list(schedule.uncovered)} of "
+              f"{U}, so there is no margin to trade against drift",
+              file=sys.stderr)
+        return RC_NO_MEDIDO
     curve = []
     for share in (Fraction(1), Fraction(3, 4), Fraction(1, 2), Fraction(1, 4), Fraction(0)):
         kept = schedule.witness_margin * share
@@ -149,7 +164,8 @@ def _print_drift(args: argparse.Namespace) -> int:
             "design": list(schedule.design),
             "cost": schedule.cost,
             "probes": [str(q) for q in Q],
-            "witness_margin": str(schedule.witness_margin),
+            "witness_margin": None if schedule.witness_margin is None
+            else str(schedule.witness_margin),
             "coverage_drift": str(design.radius if design else Fraction(0)),
             "linear_regime_end": str(design.radius if design else Fraction(0)),
             "first_divisor_break": str(design.first_divisor_break) if design else None,

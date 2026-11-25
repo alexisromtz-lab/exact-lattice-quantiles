@@ -57,9 +57,9 @@ class TestTheShippedManifest(unittest.TestCase):
         self.assertEqual(divergent, [])
         self.assertGreater(len(checks), 0)
 
-    def test_the_three_kinds_are_all_exercised(self):
+    def test_the_four_kinds_are_all_exercised(self):
         kinds = {c.kind for c in verify_file(shipped_manifest())}
-        self.assertEqual(kinds, {"ceiling", "design", "frontier"})
+        self.assertEqual(kinds, {"ceiling", "design", "ladder", "frontier"})
 
     def test_the_acta_table_is_the_one_anchored(self):
         checks = verify_file(shipped_manifest())
@@ -100,6 +100,35 @@ class TestADivergenceNamesTheField(unittest.TestCase):
         divergent = [c for c in verify_manifest(data) if not c.ok]
         self.assertEqual([(c.field, c.measured) for c in divergent],
                          [("period", 1080)])
+
+    def test_a_stretched_ladder_row_is_caught_and_names_the_margin(self):
+        """The acta quotes this row as `2/33` in its own currency; here it is `1/15`."""
+        data = with_anchor(
+            lambda a: anchor_of(a, 180, "ladder", probes=8).update({"margin": "2/33"}))
+        divergent = [c for c in verify_manifest(data) if not c.ok]
+        self.assertEqual([(c.kind, c.field, c.measured) for c in divergent],
+                         [("ladder", "margin", Fraction(1, 6))])
+
+    def test_a_ladder_row_below_the_cover_is_unmeasured_and_not_zero(self):
+        """Three sections cannot hold this design at all, so there is no margin to quote.
+
+        Reporting `0` would be the same defect the solver's verdict had: a zero of
+        non-measurement read as a measurement.
+        """
+        data = {"anchors": [{"kind": "ladder", "period": 180, "probes": 3,
+                             "design": [12, 18, 20, 45], "margin": "0"}]}
+        checks = verify_manifest(data)
+        self.assertEqual([(c.expected, c.measured) for c in checks],
+                         [(Fraction(0), None)])
+        self.assertFalse(checks[0].ok)
+
+    def test_a_ladder_on_a_design_that_skips_a_divisor_is_a_malformed_request(self):
+        """`(12, 18, 20)` leaves 15 and 45 of `U(180)` with no block at all."""
+        data = {"anchors": [{"kind": "ladder", "period": 180, "probes": 4,
+                             "design": [12, 18, 20], "margin": "1/6"}]}
+        with self.assertRaises(ManifestError) as caught:
+            verify_manifest(data)
+        self.assertIn("[15, 45]", str(caught.exception))
 
 
 class TestAManifestThatCannotBeJudged(unittest.TestCase):

@@ -13,6 +13,12 @@ to *realise* that margin, and the returned schedule says exactly how many it
 needs.  That is not a failure of the design and it is not a silent success:
 it is a named outcome, ``PROBES_INSUFFICIENT``.
 
+A third outcome is not about the margin at all: with too few sections for the
+universe, some divisors are **never held**, and a margin of zero over an
+uncovered divisor is not a measurement -- it is the absence of one.  Those
+schedules carry ``UNDERCOVERED`` and the divisors they missed, and their
+margins are ``None`` rather than ``0``.
+
 Above ``nu(T)`` nothing helps.  The exception carries the ceiling, so the
 caller learns the number that made the request impossible instead of a
 negative search result.
@@ -24,13 +30,14 @@ from dataclasses import dataclass
 from fractions import Fraction
 
 from .ceiling import Ceiling, InfeasibleAboveInstanceCeiling, instance_ceiling
-from .coverage import (best_probes, design_margin, drift_radius,
-                       margin_ladder, minimum_cost_design, minimum_probes,
-                       witness_margin)
+from .coverage import (best_probes, covered_divisors, design_margin,
+                       drift_radius, margin_ladder, minimum_cost_design,
+                       minimum_probes, witness_margin)
 from .lattice import cell_widths, grids, universe
 
 OK = "OK"
 PROBES_INSUFFICIENT = "PROBES_INSUFFICIENT"
+UNDERCOVERED = "UNDERCOVERED"
 
 
 class InfeasibleWithinBudget(Exception):
@@ -62,6 +69,9 @@ class Schedule:
     each divisor leaning on its own pair.  ``robust_margin`` is the exact
     radius of common drift the sections still *cover* -- a weaker question than
     the margin, because drift may push a section into a block it never captured.
+    Both are ``None`` when ``uncovered`` is non-empty: a divisor nobody holds
+    has no margin, and reporting ``0`` there would turn an unmeasured divisor
+    into a measured zero.
     The three nest, ``design_margin >= witness_margin >= robust_margin``: the
     witness is what the sections hold, never more than the design guarantees.
     Quote ``design_margin`` when a bound is what is being promised; quote
@@ -76,8 +86,9 @@ class Schedule:
     cost: int
     design_margin: Fraction
     probes: tuple[Fraction, ...]
-    witness_margin: Fraction
-    robust_margin: Fraction
+    witness_margin: Fraction | None
+    robust_margin: Fraction | None
+    uncovered: tuple[int, ...]
     probes_needed: int | None
     verdict: str
     ceiling: Ceiling
@@ -97,8 +108,11 @@ class Schedule:
             "cost": self.cost,
             "design_margin": str(self.design_margin),
             "probes": [str(q) for q in self.probes],
-            "witness_margin": str(self.witness_margin),
-            "robust_margin": str(self.robust_margin),
+            "witness_margin": None if self.witness_margin is None
+            else str(self.witness_margin),
+            "robust_margin": None if self.robust_margin is None
+            else str(self.robust_margin),
+            "uncovered": list(self.uncovered),
             "probes_needed": self.probes_needed,
             "verdict": self.verdict,
             "meets_requirement": self.meets_requirement,
@@ -139,12 +153,26 @@ def solve_lattice_schedule(period: int, max_cost: int, k_probes: int,
 
     _, sections = best_probes(design, U, k_probes)
     probes = tuple(sections)
-    realised = min(witness_margin(design, probes, U).values()) if probes else Fraction(0)
-    held = min(drift_radius(design, probes, U).values()) if probes else Fraction(0)
-    needed, _ = minimum_probes(design, U, required) if required > 0 else (0, ())
+    held_divisors = set(covered_divisors(design, probes, U))
+    uncovered = tuple(d for d in U if d not in held_divisors)
+    if uncovered:
+        realised = None
+        held = None
+    else:
+        realised = min(witness_margin(design, probes, U).values())
+        held = min(drift_radius(design, probes, U).values())
+    needed, _ = minimum_probes(design, U, required)
 
-    if required > 0 and (needed is None or needed > k_probes):
+    if needed is None:
+        # No section count holds this margin on this design: not a budget
+        # question, and there is no realised margin to report.
+        verdict = UNDERCOVERED
+    elif needed > k_probes:
         verdict = PROBES_INSUFFICIENT
+    elif uncovered:  # pragma: no cover - a cover of size ``needed`` exists
+        # Belt: the sections actually placed must not be read as a measurement
+        # of a design they do not cover, whatever the budget says.
+        verdict = UNDERCOVERED
     else:
         verdict = OK
 
@@ -158,6 +186,7 @@ def solve_lattice_schedule(period: int, max_cost: int, k_probes: int,
         probes=probes,
         witness_margin=realised,
         robust_margin=held,
+        uncovered=uncovered,
         probes_needed=needed,
         verdict=verdict,
         ceiling=ceiling,

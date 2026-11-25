@@ -17,7 +17,7 @@
   },
   "not_reproducible": [
     "PASOS_P55: per-period step tables produced by the acta's own sweep and not exposed by this package. Recorded here as a known blind spot rather than silently dropped.",
-    "ESCALERA_47, ESCALERA_64: the acta maximises the margin in k shared sections over ONE fixed design of that cost; this package maximises over every design within the budget. Same budget, two subjects, so the numbers are not comparable -- and they do differ (at k=4 and k=6 on cost 47, and at k=2 on cost 64, the package finds a design the acta's fixed one is not).",
+    "ESCALERA_47, ESCALERA_64: the positive rows of ESCALERA_47 and all three rows of ESCALERA_64 reproduce here and are anchored as `ladder` rows. The two rows that do not (k=4: acta 2/33, here 1/15; k=6: acta 4/33, here 2/15) differ in a currency, not in a design or in a subject. Both sides pick (12, 18, 20, 45) at cost 47; a block of a classes measures 2a/M in this package, while the acta's P52 ladder builds its cells as a/(M//2), which agrees on every even grid and stretches an odd grid by M/(M-1) -- 45/44 on M=45. Swapping only that currency inside the acta's escalera_global reproduces this ladder row for row. Its k=3 row is not a margin at all: that design needs 4 sections even with no slack, so at k=3 there is no schedule whose margin could be quoted.",
     "FUERA_P55: the divisors of T that carry no even grid, as a set per period. This package derives the set from grids(T), but the manifest compares scalars, so there is no column kind that can hold it yet.",
     "CAIDAS_P55: a census of dropped primes over 116 universes, not a quantity of one period. Reproducing it means re-running the scan, not reading a field."
   ],
@@ -45,6 +45,12 @@
     {"kind": "ceiling", "period": 720, "margin": "4/15", "critical_divisor": 90, "grids": 29, "universe_size": 22},
     {"kind": "ceiling", "period": 840, "margin": "8/35", "critical_divisor": 210, "grids": 31, "universe_size": 21},
     {"kind": "ceiling", "period": 1260, "margin": "8/35", "critical_divisor": 210, "grids": 35, "universe_size": 23},
-    {"kind": "ceiling", "period": 2520, "margin": "8/35", "critical_divisor": 210, "grids": 47, "universe_size": 32}
+    {"kind": "ceiling", "period": 2520, "margin": "8/35", "critical_divisor": 210, "grids": 47, "universe_size": 32},
+    {"kind": "ladder", "period": 180, "design": [12, 18, 20, 45], "probes": 5, "margin": "1/9"},
+    {"kind": "ladder", "period": 180, "design": [12, 18, 20, 45], "probes": 7, "margin": "2/15"},
+    {"kind": "ladder", "period": 180, "design": [12, 18, 20, 45], "probes": 8, "margin": "1/6"},
+    {"kind": "ladder", "period": 180, "design": [4, 6, 10, 12, 15, 18, 20, 45], "probes": 2, "margin": "1/6"},
+    {"kind": "ladder", "period": 180, "design": [4, 6, 10, 12, 15, 18, 20, 45], "probes": 3, "margin": "3/10"},
+    {"kind": "ladder", "period": 180, "design": [4, 6, 10, 12, 15, 18, 20, 45], "probes": 4, "margin": "1/3"}
   ]
 }

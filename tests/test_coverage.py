@@ -7,7 +7,8 @@ import unittest
 from fractions import Fraction
 from itertools import combinations
 
-from exact_lattice_quantiles import (best_probes, design_margin, drift_radius,
+from exact_lattice_quantiles import (best_probes, covered_divisors,
+                                     design_margin, drift_radius,
                                      drift_tolerance, grids, ladder,
                                      margin_ladder, minimum_cost_design,
                                      minimum_probes, universe, witness_margin)
@@ -127,6 +128,32 @@ class TestProbes(unittest.TestCase):
         self.assertEqual(minimum_probes(PAIRS[0], universe(180),
                                         Fraction(1, 6) + Fraction(1, 1000))[0], None)
 
+    def test_the_section_count_agrees_with_a_brute_force_cover(self):
+        # The count was three here while no set of three covers: the test inside
+        # the search was ``a <= q <= z`` with ``a = L + v/2``, so at ``v = 0`` a
+        # section sitting exactly on a block's left edge counted as inside a
+        # block that is open there.  The referee below shares no code with the
+        # search: it enumerates every subset of the block edges and asks each
+        # section whether it lands strictly inside a block.
+        G, U = PAIRS[0], universe(180)
+        bloques = {M: {d: (L, R) for d, L, R in cell_intervals(M)} for M in G}
+        bordes = sorted({e for bloque in bloques.values()
+                         for L, R in bloque.values() for e in (L, R)})
+
+        def cubre(Qs):
+            return all(
+                any(L < q <= R
+                    for M in G if d in bloques[M]
+                    for L, R in (bloques[M][d],) for q in Qs)
+                for d in U
+            )
+
+        mejor = next(n for n in range(1, len(bordes) + 1)
+                     if any(cubre(Q) for Q in combinations(bordes, n)))
+        n, Q = minimum_probes(G, U, Fraction(0))
+        self.assertEqual(n, mejor)
+        self.assertEqual(sorted(covered_divisors(G, Q, U)), sorted(U))
+
 
 class TestDrift(unittest.TestCase):
     def test_the_common_drift_radius_is_at_least_the_witness_slack(self):
@@ -146,11 +173,17 @@ class TestDrift(unittest.TestCase):
     def test_the_radius_is_the_component_and_not_two_maxima(self):
         # This design has a section far from every block it captures, and drift
         # can push it in.  The version that only looks at pairs capturing d at
-        # delta = 0 -- ``min(max(q - L), max(R - q))`` -- answers 1/12 here; the
+        # delta = 0 -- ``min(max(q - L), max(R - q))`` -- answers 1/6 here; the
         # exact component answers 7/30.
+        #
+        # The sections are pinned rather than taken from ``best_probes``: four
+        # sections reach the witness margin 1/6 on this design in many ways, and
+        # the claim is about the pair (design, sections), not about which
+        # maximiser the solver happens to return.
         U = universe(180)
         G = (2, 3, 4, 6, 9, 12, 15, 20, 36, 45, 180)
-        _, Q = best_probes(G, U, 4)
+        Q = (Fraction(1, 4), Fraction(5, 12), Fraction(31, 60), Fraction(43, 60))
+        self.assertEqual(min(witness_margin(G, Q, U).values()), Fraction(1, 6))
         self.assertEqual(min(drift_tolerance(G, Q, U, Fraction(0)).values()),
                          Fraction(7, 30))
         peor = None

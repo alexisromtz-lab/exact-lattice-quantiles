@@ -167,7 +167,7 @@ class TestTheCommand(Planted):
     def test_without_source_the_verdict_is_unchanged(self):
         rc, out = run("verify-acta", str(shipped_manifest()))
         self.assertEqual(rc, 0)
-        self.assertIn("84 checks over 24 anchors", out)
+        self.assertIn("90 checks over 30 anchors", out)
 
     def test_a_divergent_acta_exits_one(self):
         manifest, _ = self.plant(ACTA.replace("F(1, 3)", "F(8, 15)"))

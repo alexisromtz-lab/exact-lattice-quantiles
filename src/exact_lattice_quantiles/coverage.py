@@ -139,6 +139,28 @@ def design_margin(G: tuple[int, ...], U: tuple[int, ...],
     return Fraction(0) if worst is None else worst
 
 
+def covered_divisors(G: tuple[int, ...], Q: tuple[Fraction, ...],
+                     U: tuple[int, ...]) -> tuple[int, ...]:
+    """The divisors some section actually lands inside, in at least one grid.
+
+    :func:`witness_margin` answers ``0`` for two different things -- *held, with
+    no slack* and *never held at all* -- and only the first is a measurement.
+    This is the reader that tells them apart, so a schedule that covers less
+    than its universe cannot report the uncovered part as a margin of zero.
+    """
+    held = []
+    for d in U:
+        for M in G:
+            block = _interval_map(M).get(d)
+            if block is None:
+                continue
+            L, R = block
+            if any(L < q <= R for q in Q):
+                held.append(d)
+                break
+    return tuple(held)
+
+
 def witness_margin(G: tuple[int, ...], Q: tuple[Fraction, ...],
                    U: tuple[int, ...], doubled: bool = True) -> dict[int, Fraction]:
     """Margin held by each divisor ``d`` under a shared set of sections ``Q``.
@@ -415,6 +437,20 @@ def _probe_bands(G: tuple[int, ...], U: tuple[int, ...],
     return bands, sorted(candidates)
 
 
+def _holds(q: Fraction, L: Fraction, R: Fraction, threshold: Fraction) -> bool:
+    """``q`` lands inside ``(L, R]`` holding slack at least ``threshold``.
+
+    The left edge is open, and at ``threshold = 0`` that has to be enforced as a
+    strict inequality: a section sitting exactly on ``L`` captures nothing, and
+    an inclusive test there reports three sections where a brute force over
+    every edge shows four are needed.  Zero slack and no coverage are not the
+    same thing.  For ``threshold > 0`` the band edge ``L + threshold / 2`` is
+    already inside the block, so the two tests agree.
+    """
+    return (q > L and q <= R
+            and 2 * (q - L) >= threshold and 2 * (R - q) >= threshold)
+
+
 def minimum_probes(G: tuple[int, ...], U: tuple[int, ...],
                    threshold: Fraction) -> tuple[int | None, tuple[Fraction, ...] | None]:
     """Fewest shared sections that hold every divisor at ``threshold``.
@@ -429,11 +465,21 @@ def minimum_probes(G: tuple[int, ...], U: tuple[int, ...],
     if len({d for _, d, _, _ in bands}) < len(U):
         return None, None
     pos = _position(U)
+    blocks = {(M, d): _interval_map(M)[d] for M, d, _, _ in bands}
+    # Both edges of both objects: the block edges where a section can gain a
+    # divisor, and the band edges where it can gain slack.  Keeping only the
+    # band right edges was enough while the closed left edge let an unusable
+    # point masquerade as a candidate; once that was fixed the restricted set
+    # gave five sections for a universe a brute force covers with four.
+    every_edge = {e for (_, _), (L, R) in blocks.items() for e in (L, R)}
+    every_edge |= {a for _, _, a, _ in bands} | set(candidates)
+    candidates = sorted(every_edge)
     cover = []
     for q in candidates:
         mask = 0
-        for _, d, a, z in bands:
-            if a <= q <= z:
+        for M, d, _, _ in bands:
+            L, R = blocks[(M, d)]
+            if _holds(q, L, R, threshold):
                 mask |= 1 << pos[d]
         cover.append(mask)
     full = (1 << len(U)) - 1

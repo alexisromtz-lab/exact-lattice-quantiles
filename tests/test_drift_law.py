@@ -63,11 +63,22 @@ class DriftLawTest(unittest.TestCase):
                 )
 
     def test_the_named_anchor_of_t180_at_eight_probes(self):
+        # The published anchor is the pair (design 12,18,20,45 at cost 47,
+        # witness margin 1/6).  The per-divisor radii below are a property of
+        # the sections the solver returns, and several section sets reach 1/6
+        # on this design; the radii moved up when the candidate set stopped
+        # offering only band right edges, so they are pinned to the sections
+        # actually returned.  The design's own radius is the minimum over
+        # divisors and did not move: d = 2 breaks at 1/6.
         s = solve_lattice_schedule(180, 47, k_probes=8, min_margin=Fraction(0))
-        law = drift_law(s.design, s.probes, universe(180))
+        self.assertEqual(s.design, (12, 18, 20, 45))
+        self.assertEqual(s.witness_margin, Fraction(1, 6))
+        U = universe(180)
+        law = drift_law(s.design, s.probes, U)
         self.assertEqual(law[2], DriftLaw(Fraction(1, 6), Fraction(1, 6), Fraction(0)))
-        self.assertEqual(law[6], DriftLaw(Fraction(13, 18), Fraction(1, 90), Fraction(1, 5)))
-        self.assertEqual(law[9], DriftLaw(Fraction(77, 90), Fraction(11, 90), Fraction(1, 45)))
+        self.assertEqual(law[6], DriftLaw(Fraction(5, 6), Fraction(1, 90), Fraction(4, 9)))
+        self.assertEqual(law[9], DriftLaw(Fraction(7, 6), Fraction(1, 30), Fraction(29, 45)))
+        self.assertEqual(min(v.radius for v in law.values()), Fraction(1, 6))
 
 
 if __name__ == "__main__":
