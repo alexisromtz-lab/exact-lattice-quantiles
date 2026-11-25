@@ -1,5 +1,7 @@
 # exact-lattice-quantiles
 
+[![tests](https://github.com/alexisromtz-lab/exact-lattice-quantiles/actions/workflows/tests.yml/badge.svg)](https://github.com/alexisromtz-lab/exact-lattice-quantiles/actions/workflows/tests.yml)
+
 Exact, provable phase margin for multi-rate lattice sampling — in rational
 arithmetic, with zero dependencies and zero floats.
 
@@ -22,6 +24,8 @@ returns it as a `fractions.Fraction`:
 | How many shared sections hold margin `v`? | set cover over the divisor universe | `minimum_probes` |
 | What is the best margin `k` sections can hold? | maximin over probe positions | `best_probes` |
 | Is the margin I asked for even possible? | a certificate, not an error message | `InfeasibleAboveInstanceCeiling` |
+| How much common drift does the margin survive? | a curve, not a constant | `drift_tolerance` |
+| How much common drift still covers every divisor? | the exact coverage radius | `drift_radius` |
 
 ## Install
 
