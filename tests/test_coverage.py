@@ -107,7 +107,7 @@ class TestProbes(unittest.TestCase):
 
     def test_four_sections_on_the_cheap_design(self):
         mu, Q = best_probes(PAIRS[0], universe(180), 4)
-        self.assertEqual(mu, Fraction(2, 33))
+        self.assertEqual(mu, Fraction(1, 15))
         self.assertEqual(len(Q), 4)
         self.assertEqual(min(witness_margin(PAIRS[0], Q, universe(180)).values()), mu)
 
@@ -146,13 +146,13 @@ class TestDrift(unittest.TestCase):
     def test_the_radius_is_the_component_and_not_two_maxima(self):
         # This design has a section far from every block it captures, and drift
         # can push it in.  The version that only looks at pairs capturing d at
-        # delta = 0 -- ``min(max(q - L), max(R - q))`` -- answers 1/6 here; the
-        # exact component answers 37/210.
+        # delta = 0 -- ``min(max(q - L), max(R - q))`` -- answers 1/12 here; the
+        # exact component answers 7/30.
         U = universe(180)
         G = (2, 3, 4, 6, 9, 12, 15, 20, 36, 45, 180)
         _, Q = best_probes(G, U, 4)
         self.assertEqual(min(drift_tolerance(G, Q, U, Fraction(0)).values()),
-                         Fraction(37, 210))
+                         Fraction(7, 30))
         peor = None
         for d in U:
             down = up = Fraction(0)

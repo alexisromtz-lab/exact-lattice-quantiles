@@ -138,18 +138,18 @@ On `T = 180`:
 
 | design | cost | margin | sections needed | best margin with `k = 4` |
 | --- | --- | --- | --- | --- |
-| `{12, 18, 20, 45}` | 47 | 1/6 | 8 | 2/33 |
+| `{12, 18, 20, 45}` | 47 | 1/6 | 8 | 1/15 |
 | `{4, 6, 10, 12, 15, 18, 20, 45}` | 64 | 1/3 | 4 | 1/3 |
 
 The cheap design is the expensive one to serve: `1/6` needs eight sections
 while the maximum margin needs four, because a design whose blocks are only
 just wide enough forces each section to serve a single divisor. At `k = 4` on
-the cheap design no set of sections can hold more than `2/33`, and no `k` at
+the cheap design no set of sections can hold more than `1/15`, and no `k` at
 all reaches past `1/6`:
 
 ```python
 solve_lattice_schedule(180, max_cost=47, k_probes=4, min_margin="1/6")
-# verdict = "PROBES_INSUFFICIENT", probes_needed = 8, witness_margin = 2/33
+# verdict = "PROBES_INSUFFICIENT", probes_needed = 8, witness_margin = 1/15
 ```
 
 ### 4. The price is a minimum, not a formula
@@ -297,15 +297,15 @@ $ exact-lattice-quantiles drift 180 --max-cost 64 --probes 4
 period           180
 design           [12, 18, 20, 45]
 cost             47 points (budget 64)
-sections (4)  ['10/33', '94/165', '23/33', '32/33']
-witness margin   2/33
-coverage drift   2/33  (captured, margin not kept)
+sections (4)  ['3/10', '17/30', '67/90', '29/30']
+witness margin   1/15
+coverage drift   1/15  (captured, margin not kept)
 margin kept      drift tolerated
-  2/33            0
-  1/22            1/66
-  1/33            1/33
-  1/66            1/22
-  0               2/33
+  1/15            0
+  1/20            1/60
+  1/30            1/30
+  1/60            1/20
+  0               1/15
 ```
 
 Read the first row and the last: the margin is held under **zero** drift, and
@@ -316,7 +316,7 @@ that carries `1/6` on the same period behaves identically
 (`drift 180 --max-cost 47 --probes 8`: `1/6 -> 0`, `1/12 -> 1/12`).
 
 Coverage is a genuinely weaker measure, and the gap is not small. This design
-holds `1/6` and still covers under a drift of `37/210`:
+holds `1/6` and still covers under a drift of `7/30`:
 
 ```python
 from exact_lattice_quantiles import (best_probes, drift_radius, universe,
@@ -325,12 +325,12 @@ from exact_lattice_quantiles import (best_probes, drift_radius, universe,
 G = (2, 3, 4, 6, 9, 12, 15, 20, 36, 45, 180)
 _, Q = best_probes(G, universe(180), 4)
 min(witness_margin(G, Q, universe(180)).values())          # 1/6
-min(drift_radius(G, Q, universe(180)).values())            # 37/210
+min(drift_radius(G, Q, universe(180)).values())            # 7/30
 ```
 
-`37/210` is the exact radius of the connected component of the union of
+`7/30` is the exact radius of the connected component of the union of
 admissible drift spans that contains zero. An earlier version of
-`drift_radius` answered `1/6` here: it only counted sections that captured a
+`drift_radius` answered `1/12` here: it only counted sections that captured a
 divisor at `delta = 0`, and drift can capture. The under-report is asserted in
 `tests/test_coverage.py` against the old formula, so it cannot come back.
 
@@ -357,13 +357,12 @@ Four quantities, and they answer four different questions:
 - `design_margin` — what the grid set guarantees before any section is placed.
 - `witness_margin` — what the chosen sections actually hold, with each divisor
   leaning on its own grid/section pair. This is what a schedule delivers, and
-  it is **not** a promise until issue #6 is closed: at 96 periods it reports
-  more than the design guarantees. See the note under the list.
+  it never exceeds `design_margin`: the four quantities nest.
 - `drift_radius` (`Schedule.robust_margin`) — the largest common drift `delta`
   the sections still **cover** every divisor under. Exact for coverage; it is
   *not* optimistic, it is a weaker question: a section may be pushed into a
   block it never captured, so this can exceed the witness margin (measured
-  above: `37/210` against `1/6`).
+  above: `7/30` against `1/6`).
 - `drift_tolerance` — the largest common drift `delta` the sections still hold
   a demanded margin under. `drift_tolerance(..., 0) == drift_radius(...)`, and
   `drift_tolerance(..., witness_margin)` is `0` on every design measured.
@@ -371,16 +370,19 @@ Four quantities, and they answer four different questions:
 Coverage and slack are not the same predicate, and neither is the other's
 bound.
 
-`design_margin >= witness_margin` is the one hierarchy this package does **not**
-yet have everywhere: it holds at 104 of the 200 even periods in `2..400` and
-fails at the other 96, where a design that guarantees `2/3` reports sections
-holding `1` (`T = 6` is the worst case). The failing set is enumerated in
-[tests/test_solver_contract.py](tests/test_solver_contract.py) and tracked as
-[issue #6](https://github.com/alexisromtz-lab/exact-lattice-quantiles/issues/6);
-`design_margin <= instance_ceiling(T)` holds at all 200, so the ceiling is not
-affected. Until the two are normalised to one currency, **quote
-`design_margin` when a guarantee is promised** and read the witness as what the
-sections hold under one particular reading of the blocks.
+The hierarchy `design_margin >= witness_margin >= drift_radius` holds at all
+200 even periods in `2..400`, and so does `design_margin <= instance_ceiling(T)`.
+It did not always: before 0.3.0 the block map divided by the number of sections
+(`M // 2`) while `cell_width` divided by half the period (`M / 2`), and the two
+agree only on even grids, so every odd grid inflated the witness by `M / (M-1)`
+and 96 periods reported sections holding more than their own design guaranteed
+([issue #6](https://github.com/alexisromtz-lab/exact-lattice-quantiles/issues/6)).
+One normalisation in `_interval_map` closed it; the census that pins it is
+[tests/test_solver_contract.py](tests/test_solver_contract.py).
+
+Two figures changed with the repair, both in the direction of the geometry:
+`k = 4` on the cheap design holds `1/15` rather than the inflated `2/33`, and
+the coverage radius of the design above is `7/30` rather than `37/210`.
 
 ## Exactness
 
