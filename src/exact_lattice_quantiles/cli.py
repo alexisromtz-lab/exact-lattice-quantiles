@@ -3,8 +3,9 @@
 Exit codes are part of the contract:
 
 ``0``  the request was answered
-``1``  the margin requested is above the instance ceiling -- impossible at any
-       price, and the ceiling is printed so the caller learns the number
+``1``  the answer is no: the margin requested is above the instance ceiling --
+       impossible at any price, and the ceiling is printed so the caller learns
+       the number -- or an ``acta`` anchor does not reproduce
 ``2``  the margin requested exists but costs more points than the budget
 ``3``  the request itself is malformed
 """
@@ -18,6 +19,7 @@ from fractions import Fraction
 
 from .ceiling import (InfeasibleAboveInstanceCeiling, ceiling_by_product,
                       ceiling_by_scan, ceiling_census, instance_ceiling)
+from .acta import ManifestError, render, shipped_manifest, verify_file
 from .coverage import coverage_census, drift_radius, drift_tolerance, witness_margin
 from .lattice import universe
 from .pricing import (block_catalogue, block_of, block_saving,
@@ -247,6 +249,34 @@ def _print_blocks(limit: int, as_json: bool) -> int:
     return RC_OK
 
 
+def _print_verify_acta(manifest: str, as_json: bool) -> int:
+    """Recompute the anchors of a manifest: the boundary is a gate, not a memory."""
+    try:
+        checks = verify_file(manifest)
+    except ManifestError as exc:
+        print(f"BAD_REQUEST: {exc}", file=sys.stderr)
+        return RC_BAD_REQUEST
+    divergent = [check for check in checks if not check.ok]
+    anchors = len({check.anchor for check in checks})
+    if as_json:
+        print(json.dumps({
+            "manifest": str(manifest),
+            "anchors": anchors,
+            "checks": len(checks),
+            "divergent": len(divergent),
+            "results": [{"anchor": c.anchor, "kind": c.kind, "field": c.field,
+                         "manifest": render(c.expected),
+                         "package": render(c.measured), "ok": c.ok}
+                        for c in checks],
+        }, indent=2, sort_keys=True))
+    else:
+        for check in checks:
+            print(check)
+        print(f"{len(checks)} checks over {anchors} anchors:"
+              f" {len(checks) - len(divergent)} reproduce, {len(divergent)} divergent")
+    return RC_OK if not divergent else RC_ABOVE_CEILING
+
+
 def _self_test() -> int:
     """A handful of claims the package makes, checked in-process."""
     ok = True
@@ -294,6 +324,15 @@ def _self_test() -> int:
           exactness_frontier(2000)["period"], 1080)
     check("the price at 1080 is 135, not 139",
           price_exact(1080, (54, 90, 135)), 135)
+    try:
+        anchors = verify_file(shipped_manifest())
+    except ManifestError as exc:
+        check("the shipped manifest reads as a manifest", f"ManifestError: {exc}",
+              "readable")
+    else:
+        divergent = [str(c) for c in anchors if not c.ok]
+        check(f"the shipped manifest reproduces its {len(anchors)} checks",
+              divergent or "all reproduce", "all reproduce")
     return RC_OK if ok else RC_ABOVE_CEILING
 
 
@@ -374,6 +413,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_blocks = sub.add_parser(
         "blocks", help="the divisibility-minimal blocks that save anything")
     p_blocks.add_argument("--limit", type=int, default=2000)
+
+    p_verify = sub.add_parser(
+        "verify-acta",
+        help="recompute an acta's anchors from a manifest, naming every field"
+             " that diverges")
+    p_verify.add_argument("manifest", help="path to the manifest JSON")
     return parser
 
 
@@ -411,6 +456,8 @@ def main(argv: list[str] | None = None) -> int:
                                    args.universe == "reduced", args.json)
         if args.command == "blocks":
             return _print_blocks(args.limit, args.json)
+        if args.command == "verify-acta":
+            return _print_verify_acta(args.manifest, args.json)
     except ValueError as exc:
         print(f"BAD_REQUEST: {exc}", file=sys.stderr)
         return RC_BAD_REQUEST

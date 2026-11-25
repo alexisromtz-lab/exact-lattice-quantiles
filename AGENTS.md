@@ -36,7 +36,14 @@ python -m unittest discover -s tests -t .        # full suite
 PYTHONPATH=src python -m exact_lattice_quantiles.cli --self-test
 PYTHONPATH=src python -m exact_lattice_quantiles.cli ladder 180
 PYTHONPATH=src python -m exact_lattice_quantiles.cli drift 180 --max-cost 64 --probes 4
+PYTHONPATH=src python -m exact_lattice_quantiles.cli verify-acta \
+  src/exact_lattice_quantiles/manifests/acta_margen_secciones_20261125.json
 ```
+
+A quote of this package kept somewhere else is recomputed by `verify-acta`
+against a manifest of anchors: one `Check` per field, so a divergence names the
+quantity and not the file. Editing a manifest is a claim that the new number is
+the intended one — never a way to turn a red gate green.
 
 The suite runs in about half a minute; the slow tests are the ones that
 compare the factorized ceiling against the full scan on every even period to
