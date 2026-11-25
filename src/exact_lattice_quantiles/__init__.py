@@ -42,13 +42,15 @@ from .coverage import (best_probes, design_margin, drift_radius,
                        minimum_probes, witness_margin)
 from .lattice import (carriers, cell_intervals, cell_width, cell_widths, grids,
                       seats, universe, universe_from_factorization, widths)
-from .pricing import (PriceFormCensus, best_block_saving, exactness_frontier,
-                      maximal_divisors, price_exact, price_form_census,
-                      price_form_sweep, price_one_per_maximal)
+from .pricing import (PriceFormCensus, best_block_saving, block_catalogue,
+                      block_of, block_saving, exactness_frontier,
+                      frontier_by_blocks, maximal_divisors, price_exact,
+                      price_form_census, price_form_sweep,
+                      price_one_per_maximal)
 from .solve import (OK, PROBES_INSUFFICIENT, InfeasibleWithinBudget, Schedule,
                     ladder, solve_lattice_schedule)
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "Ceiling",
@@ -60,6 +62,10 @@ __all__ = [
     "Schedule",
     "__version__",
     "best_block_saving",
+    "block_catalogue",
+    "block_of",
+    "block_saving",
+    "frontier_by_blocks",
     "best_probes",
     "carriers",
     "ceiling_by_product",
