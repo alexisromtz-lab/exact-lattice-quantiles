@@ -6,9 +6,10 @@ from __future__ import annotations
 import unittest
 from fractions import Fraction
 
-from exact_lattice_quantiles import (grids, maximal_divisors, price_exact,
+from exact_lattice_quantiles import (best_block_saving, exactness_frontier,
+                                     grids, maximal_divisors, price_exact,
                                      price_form_census, price_form_sweep,
-                                     price_one_per_maximal, universe)
+                                     price_one_per_maximal, universe, widths)
 
 
 class TestClosedFormIsAnUpperBound(unittest.TestCase):
@@ -103,6 +104,47 @@ class TestTheSweepOverEvenPeriods(unittest.TestCase):
         data = price_form_sweep(360, 360, reduced=False, max_masks=1 << 4)
         self.assertEqual(data["periods"], 0)
         self.assertEqual(data["skipped"], [360])
+
+
+class TestTheBoundaryOfTheSweep(unittest.TestCase):
+    """200/200 to 400 is a bounded census, not a law.  It breaks at 1080."""
+
+    def test_a_block_is_an_antichain_and_the_naive_predicate_double_counts(self):
+        # The 17 divisors of 180: the naive "any subset cheaper than its parts"
+        # reports a deficit of 180 with the whole universe as witness.  Four of
+        # the five in the naive witness divide 45, so their cost is charged
+        # twice; the honest witness is {36, 60, 90}, which is what the DP finds.
+        divisors_of_180 = tuple(d for d in range(2, 181) if 180 % d == 0)
+        saving, witness, bound, cover = best_block_saving(divisors_of_180)
+        self.assertEqual((saving, witness), (3, (36, 60, 90)))
+        self.assertEqual((bound, cover), (93, 90))
+        self.assertEqual(price_one_per_maximal(witness), bound)
+
+    def test_the_reduced_universe_of_180_has_no_block_at_all(self):
+        self.assertEqual(best_block_saving(universe(180)), (0, (), 0, 0))
+
+    def test_the_first_mispriced_universe_is_1080(self):
+        data = exactness_frontier()
+        self.assertEqual(data["period"], 1080)
+        self.assertEqual(data["witness"], (54, 90, 135))
+        self.assertEqual((data["bound"], data["cover"], data["grid"]), (139, 135, 270))
+        self.assertEqual((data["breaks"], data["scanned"]), (16, 4000))
+
+    def test_the_witness_is_a_cover_the_library_itself_confirms(self):
+        # The certificate is the design {270}, not a DP: at 1080 the DP is 2^23
+        # masks.  The grid 270 must genuinely cover all three by its own widths.
+        w = widths(1080)
+        for d in (54, 90, 135):
+            self.assertGreater(w[(270, d)], Fraction(0), d)
+
+    def test_divisibility_by_30_is_necessary_and_not_sufficient(self):
+        # 840 has 12 and 20 in U(840) and lacks 30, so the triple is not there
+        # and no block exists; 265 of the 4000 periods hold a multiple of 30.
+        U840 = universe(840)
+        self.assertIn(12, U840)
+        self.assertIn(20, U840)
+        self.assertNotIn(30, U840)
+        self.assertEqual(best_block_saving(U840)[0], 0)
 
 
 if __name__ == "__main__":
