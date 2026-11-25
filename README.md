@@ -356,8 +356,9 @@ Four quantities, and they answer four different questions:
 
 - `design_margin` — what the grid set guarantees before any section is placed.
 - `witness_margin` — what the chosen sections actually hold, with each divisor
-  leaning on its own grid/section pair. **Quote this when a schedule is being
-  promised.**
+  leaning on its own grid/section pair. This is what a schedule delivers, and
+  it is **not** a promise until issue #6 is closed: at 96 periods it reports
+  more than the design guarantees. See the note under the list.
 - `drift_radius` (`Schedule.robust_margin`) — the largest common drift `delta`
   the sections still **cover** every divisor under. Exact for coverage; it is
   *not* optimistic, it is a weaker question: a section may be pushed into a
@@ -367,9 +368,19 @@ Four quantities, and they answer four different questions:
   a demanded margin under. `drift_tolerance(..., 0) == drift_radius(...)`, and
   `drift_tolerance(..., witness_margin)` is `0` on every design measured.
 
-The hierarchy `design_margin >= witness_margin` and
-`drift_radius >= witness_margin` is asserted in the test suite. Coverage and
-slack are not the same predicate, and neither is the other's bound.
+Coverage and slack are not the same predicate, and neither is the other's
+bound.
+
+`design_margin >= witness_margin` is the one hierarchy this package does **not**
+yet have everywhere: it holds at 104 of the 200 even periods in `2..400` and
+fails at the other 96, where a design that guarantees `2/3` reports sections
+holding `1` (`T = 6` is the worst case). The failing set is enumerated in
+[tests/test_solver_contract.py](tests/test_solver_contract.py) and tracked as
+[issue #6](https://github.com/alexisromtz-lab/exact-lattice-quantiles/issues/6);
+`design_margin <= instance_ceiling(T)` holds at all 200, so the ceiling is not
+affected. Until the two are normalised to one currency, **quote
+`design_margin` when a guarantee is promised** and read the witness as what the
+sections hold under one particular reading of the blocks.
 
 ## Exactness
 
@@ -383,7 +394,7 @@ returned or stored.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 119 tests
+python -m unittest discover -s tests -t .     # 124 tests
 exact-lattice-quantiles --self-test           # 13 checks, RC 0
 ```
 
