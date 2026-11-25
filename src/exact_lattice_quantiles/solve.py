@@ -62,10 +62,9 @@ class Schedule:
     each divisor leaning on its own pair.  ``robust_margin`` is the exact
     radius of common drift the sections still *cover* -- a weaker question than
     the margin, because drift may push a section into a block it never captured.
-    Quote the witness margin when a schedule is being promised, but not as a
-    guarantee: at 96 of the 200 even periods below 400 the witness comes out
-    above ``design_margin`` and the two currencies disagree (issue #6).  Quote
-    ``design_margin`` when a bound is what is being promised; quote
+    The three nest, ``design_margin >= witness_margin >= robust_margin``: the
+    witness is what the sections hold, never more than the design guarantees.
+    Quote ``design_margin`` when a bound is what is being promised; quote
     ``drift_tolerance`` when the question is how much common clock error the
     sections keep that margin under.
     """

@@ -28,7 +28,7 @@ class TestTheThreeOutcomes(unittest.TestCase):
         self.assertEqual(s.probes_needed, 8)
         self.assertEqual(s.verdict, PROBES_INSUFFICIENT)
         self.assertFalse(s.meets_requirement)
-        self.assertEqual(s.witness_margin, Fraction(2, 33))
+        self.assertEqual(s.witness_margin, Fraction(1, 15))
 
     def test_the_same_design_with_eight_sections_is_ok(self):
         s = solve_lattice_schedule(180, max_cost=47, k_probes=8,

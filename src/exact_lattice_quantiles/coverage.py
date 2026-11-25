@@ -179,8 +179,8 @@ def drift_radius(G: tuple[int, ...], Q: tuple[Fraction, ...],
     Two corrections to the obvious version, both measured.  Every span is a
     candidate even when ``q`` starts outside the block -- a drift can push a
     section *into* ``d``'s block, and keeping only the pairs that already
-    capture ``d`` under-reported the radius (``1/6`` against the exact
-    ``37/210`` for ``(2, 3, 4, 6, 9, 12, 15, 20, 36, 45, 180)`` at ``k = 4``).
+    capture ``d`` under-reported the radius (``1/12`` against the exact
+    ``7/30`` for ``(2, 3, 4, 6, 9, 12, 15, 20, 36, 45, 180)`` at ``k = 4``).
     And the reach is the component grown through overlaps, not a maximum:
     ``min(max(q - L), max(R - q))`` agrees only while every span straddles
     zero, and it stops agreeing as soon as one of them does not.

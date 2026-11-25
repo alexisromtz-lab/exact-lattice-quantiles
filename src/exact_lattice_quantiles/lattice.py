@@ -58,14 +58,25 @@ def seats(M: int) -> tuple[tuple[int, int, int], ...]:
 
 @lru_cache(maxsize=None)
 def _interval_map(M: int) -> dict[int, tuple[Fraction, Fraction]]:
-    """``d -> (L, R]``, the same block on the space of sections.
+    """``d -> (L, R]``, the same block on the period, in the one currency.
 
-    The section ``q`` captures ``d`` when ``q`` lands in ``(lo - 1) / N, hi / N]``
-    with ``N = M // 2``.  The left edge is open and the right edge is closed;
-    opening both moved the margin of the thin divisors by a whole class.
+    The section ``q`` captures ``d`` when ``q`` lands in
+    ``(2 * (lo - 1) / M, 2 * hi / M]``, so a block of ``a`` classes measures
+    ``2a / M`` -- the same number :func:`cell_width` reports, which is the
+    currency every margin in the package is quoted in.
+
+    Dividing by ``N = M // 2`` instead is the tempting error: the blocks then
+    tile the section circle to exactly ``1`` for every grid, but each odd grid
+    is stretched by ``M / (M - 1)``, and a witness on an odd grid comes out
+    wider than the design that contains it.  The ``1 / M`` the period currency
+    leaves uncovered on an odd grid is the carrier point -- the phase that is
+    exactly zero -- which no section occupies; hiding it under a rescaling is
+    what made the two currencies disagree.
+
+    The left edge is open and the right edge is closed; opening both moved the
+    margin of the thin divisors by a whole class.
     """
-    N = M // 2
-    return {d: (Fraction(lo - 1, N), Fraction(hi, N))
+    return {d: (Fraction(2 * (lo - 1), M), Fraction(2 * hi, M))
             for d, (lo, hi) in _seat_map(M).items()}
 
 
