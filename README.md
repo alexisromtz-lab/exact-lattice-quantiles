@@ -276,10 +276,46 @@ about the wrong set.
 saving set. In `D(1050)` the antichain `{42, 150, 350, 525}` saves `8` points
 and `42` is no `1050 / p`: its reciprocals are `1/2 + 1/3 + 1/7 + 1/25 > 1`, so
 the drop-one shape is not the only way to save. The maximum still comes from the
-block of `1050`, worth `92`. That "the maximum is a block" half is measured --
-zero exceptions on the 125 breaks to 3000, witness included -- and not proved;
-`tests/test_carrier_law.py` pins both halves so a counterexample arrives as a
-failing test instead of a rumour.
+block of `1050`, worth `92`.
+
+#### The one lemma that would make the law a theorem
+
+Half of the law needs nothing. If some divisor has a block that saves, that
+block **is** a cover, so the closed form that prices its parts is overcharging,
+and the period is mispriced. The other half -- *no* saving block means the
+closed form is optimal -- is a statement about covers that are not blocks.
+
+Take any cover of a request by several grids and fold it: the grids of a group
+are covered by the single grid named by their least common multiple `L`, so the
+group costs `L // 2`. Two grids in a group can never be cheaper together than
+apart -- for incomparable `a = g * s` and `b = g * t`, `lcm(a, b) / 2 = g * s *
+t / 2 >= (a + b) / 2` because `(s - 1)(t - 1) >= 1`. For three or more, the chain
+closes if and only if
+
+> **no antichain with least common multiple `L` saves more than the block of
+> `L`.**
+
+With it, a group never beats paying its parts, every cover costs at least the
+closed-form price, and the form is optimal exactly when no block saves. That
+lemma is what `dominance` checks, and it is **measured, not proved**:
+
+```
+$ exact-lattice-quantiles dominance --max-period 2000
+antichains with a least common multiple up to 2000: 82 periods where a saving is in play
+  every saving is carried by the drop-one block
+```
+
+`82` is the same `82` the search finds over `D(T)`, and the ceiling it computes
+is the block's saving period by period, witness included --
+[tests/test_block_dominance.py](tests/test_block_dominance.py) fails the day an
+antichain beats its own block. What the run does *not* say is why the block wins.
+The honest statement is the one in the code: `antichain_saving_ceiling` is a
+search, and a proof would replace it with a one-line inequality.
+
+The reciprocal sum is not the criterion either. `N = 30` has `1/2 + 1/3 + 1/5 >
+1` and saves nothing, because `7 + 5 + 3 = 15` buys exactly the fifteen points
+the single grid `30` costs; `60` and `90` are the same shape with a square
+factor and save one point each.
 
 #### Why the price is answerable where the table is not
 
@@ -472,8 +508,8 @@ returned or stored.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 145 tests
-exact-lattice-quantiles --self-test           # 29 checks, RC 0
+python -m unittest discover -s tests -t .     # 150 tests
+exact-lattice-quantiles --self-test           # 31 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,

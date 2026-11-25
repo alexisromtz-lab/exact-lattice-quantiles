@@ -406,6 +406,81 @@ def carrier_block_saving(n: int, carried: tuple[int, ...] | set[int]) -> int:
     return sum(d // 2 for d in kept) - whole // 2
 
 
+def antichain_saving_ceiling(period: int) -> tuple[int, tuple[int, ...]]:
+    """The most any antichain with this exact least common multiple can save.
+
+    This is the other side of the law.  ``block_saving`` prices one candidate;
+    here every antichain of divisors of ``period`` whose least common multiple
+    is exactly ``period`` is priced, and the best one wins.  Pairs and single
+    grids are excluded because they never save: for incomparable ``a`` and ``b``
+    with ``a = g * s`` and ``b = g * t``, ``lcm(a, b) = g * s * t >= a + b``
+    because ``(s - 1)(t - 1) >= 1``.
+
+    The search prunes a branch as soon as ``charged apart + everything still
+    reachable`` cannot beat the best saving already found, which is why the
+    ceiling is reachable for one period but not for every period at once.  The
+    branches it keeps are exactly the ones that could save, so a return of
+    ``(0, ())`` is a statement about every antichain and not about the search.
+    """
+    candidates = tuple(sorted((d for d in divisors(period) if d >= 2),
+                              reverse=True))
+    n = len(candidates)
+    suffix = [0] * (n + 1)
+    for i in range(n - 1, -1, -1):
+        suffix[i] = suffix[i + 1] + candidates[i] // 2
+    best = [0, ()]
+
+    def walk(start: int, chosen: list[int], merged: int, charged: int) -> None:
+        if len(chosen) >= 3 and merged == period and charged - period // 2 > best[0]:
+            best[0], best[1] = charged - period // 2, tuple(chosen)
+        if start >= n or charged + suffix[start] - merged // 2 <= best[0]:
+            return
+        for j in range(start, n):
+            d = candidates[j]
+            if any(d % c == 0 or c % d == 0 for c in chosen):
+                continue
+            chosen.append(d)
+            walk(j + 1, chosen, _lcm(merged, d), charged + d // 2)
+            chosen.pop()
+
+    walk(0, [], 1, 0)
+    return best[0], best[1]
+
+
+def block_dominance_census(limit: int) -> dict:
+    """Check the one lemma the law rests on, period by period.
+
+    If no saving ever beats the block of its own least common multiple, then a
+    cover built out of several grids cannot beat the block of the grid that
+    covers them all -- and the closed form's own bound is the optimum whenever
+    no block saves.  A violation here would be the first counterexample to
+    "the maximum saving comes from a drop-one block".
+    """
+    violations = []
+    in_play = 0
+    for period in range(2, limit + 1):
+        ceiling, witness = antichain_saving_ceiling(period)
+        block = max(0, block_saving(period))
+        if ceiling or block:
+            in_play += 1
+        if ceiling > block:
+            violations.append({
+                "period": period,
+                "ceiling": ceiling,
+                "witness": list(witness),
+                "block": block,
+                "block_witness": list(block_of(period)[0]),
+            })
+    return {
+        "limit": limit,
+        "periods": max(0, limit - 1),
+        "in_play": in_play,
+        "violations": violations,
+        "verdict": "the block carries every saving" if not violations
+                   else "the block does not carry every saving",
+    }
+
+
 def block_catalogue(limit: int) -> tuple[tuple[int, int, tuple[int, ...]], ...]:
     """Every ``n <= limit`` whose block saves and that no divisor of it improves.
 

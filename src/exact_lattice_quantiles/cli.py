@@ -23,7 +23,8 @@ from .acta import ManifestError, render, shipped_manifest, verify_file
 from .coverage import (coverage_census, design_law, drift_law, drift_radius,
                        drift_tolerance, witness_margin)
 from .lattice import universe
-from .pricing import (block_catalogue, block_of, block_saving,
+from .pricing import (antichain_saving_ceiling, block_catalogue,
+                      block_dominance_census, block_of, block_saving,
                       carrier_block_of, carrier_block_saving,
                       exactness_frontier, price_exact,
                       price_form_census, price_form_sweep)
@@ -266,6 +267,24 @@ def _print_blocks(limit: int, as_json: bool) -> int:
     return RC_OK
 
 
+def _print_dominance(limit: int, as_json: bool) -> int:
+    """The lemma behind the law, checked instead of assumed."""
+    census = block_dominance_census(limit)
+    if as_json:
+        print(json.dumps(census, indent=2, sort_keys=True))
+        return RC_OK if not census["violations"] else RC_ABOVE_CEILING
+    print(f"antichains with a least common multiple up to {limit}: "
+          f"{census['in_play']} periods where a saving is in play")
+    if census["violations"]:
+        for row in census["violations"]:
+            print(f"  VIOLATION  {row['period']}: ceiling {row['ceiling']} "
+                  f"on {tuple(row['witness'])} beats the block "
+                  f"{row['block']} on {tuple(row['block_witness'])}")
+        return RC_ABOVE_CEILING
+    print("  every saving is carried by the drop-one block")
+    return RC_OK
+
+
 def _print_verify_acta(manifest: str, as_json: bool) -> int:
     """Recompute the anchors of a manifest: the boundary is a gate, not a memory."""
     try:
@@ -362,6 +381,10 @@ def _self_test() -> int:
           carrier_block_of(420, universe(2520))[0], (84, 140, 210))
     check("and that filtered block still saves 7",
           carrier_block_saving(420, universe(2520)), 7)
+    check("no antichain with lcm 1050 saves more than its block",
+          antichain_saving_ceiling(1050)[0], block_saving(1050))
+    check("and the witness of that ceiling is the block itself",
+          tuple(sorted(antichain_saving_ceiling(1050)[1])), block_of(1050)[0])
     check("the block of 60 in U(840) keeps only a pair",
           carrier_block_of(60, universe(840))[0], (12, 20))
     check("and that pair costs 14 points more than the grid it replaces",
@@ -460,6 +483,12 @@ def build_parser() -> argparse.ArgumentParser:
         "blocks", help="the divisibility-minimal blocks that save anything")
     p_blocks.add_argument("--limit", type=int, default=2000)
 
+    p_dominance = sub.add_parser(
+        "dominance",
+        help="check the lemma the law rests on: no antichain saves more than "
+             "the block of its own least common multiple")
+    p_dominance.add_argument("--max-period", type=int, default=2000)
+
     p_verify = sub.add_parser(
         "verify-acta",
         help="recompute an acta's anchors from a manifest, naming every field"
@@ -502,6 +531,8 @@ def main(argv: list[str] | None = None) -> int:
                                    args.universe == "reduced", args.json)
         if args.command == "blocks":
             return _print_blocks(args.limit, args.json)
+        if args.command == "dominance":
+            return _print_dominance(args.max_period, args.json)
         if args.command == "verify-acta":
             return _print_verify_acta(args.manifest, args.json)
     except ValueError as exc:
