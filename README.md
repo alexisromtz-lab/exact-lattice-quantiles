@@ -292,25 +292,58 @@ apart -- for incomparable `a = g * s` and `b = g * t`, `lcm(a, b) / 2 = g * s *
 t / 2 >= (a + b) / 2` because `(s - 1)(t - 1) >= 1`. For three or more, the chain
 closes if and only if
 
-> **no antichain with least common multiple `L` saves more than the block of
-> `L`.**
+> **no antichain with least common multiple `L` saves a point where the block
+> of `L` saves none.**
 
 With it, a group never beats paying its parts, every cover costs at least the
-closed-form price, and the form is optimal exactly when no block saves. That
-lemma is what `dominance` checks, and it is **measured, not proved**:
+closed-form price, and the form is optimal exactly when no block saves.
+
+#### The lemma has two readings, and the stronger one is false
+
+Read as a **ranking** -- the block saves *most* among the antichains sharing its
+least common multiple -- the lemma is false, and the refutation is short enough
+to quote. Subtract the single grid `L // 2` from both savings and divide by it:
+the block pays `e1 - 1`, and the family holding one grid per *pair* of primes,
+`{L // (pq)}`, pays `e2 - 1`, where `e1` is the reciprocal sum of the prime set
+of `L` and `e2` the reciprocal sum over its pairs. Both scale with `L`, so which
+wins depends on the prime set alone. `e1` grows like `log log` and `e2` like its
+square, so `e2` has to overtake -- but not soon, because a product of two primes
+is a poor thing to merge: at `180` the pair family is `{30, 18, 12}` and it
+*loses* `60` points. The overtake happens at 176 primes:
+
+```
+$ exact-lattice-quantiles strong-lemma
+ranking lemma: no antichain saves more than the block of its own least common multiple
+  crossing at 176 primes, the largest being 1049
+  at 175 primes (largest 1039, 437-digit period)  the block wins by 1.704e+432
+  at 176 primes (largest 1049, 440-digit period)  the pairs win by 1.209e+436 (+0.082 %)
+  verdict  the drop-one block is not the best-saving antichain
+```
+
+The crossing is located with exact rationals and then confirmed with the same
+integer rule the package prices blocks by, floors included, on both sides of it,
+so the defeat is not an artefact of dividing. It is also out of reach of the
+census below: no period under `2000` puts more than four primes in play.
+
+What the law actually uses is the **sign** reading -- no antichain saves where
+no block does -- and `dominance` reports it on a line of its own, so the two
+readings can never be confused again:
 
 ```
 $ exact-lattice-quantiles dominance --max-period 2000
 antichains with a least common multiple up to 2000: 82 periods where a saving is in play
   every saving is carried by the drop-one block
+  no antichain saves where no block does (the reading the law needs)
 ```
 
 `82` is the same `82` the search finds over `D(T)`, and the ceiling it computes
 is the block's saving period by period, witness included --
 [tests/test_block_dominance.py](tests/test_block_dominance.py) fails the day an
-antichain beats its own block. What the run does *not* say is why the block wins.
-The honest statement is the one in the code: `antichain_saving_ceiling` is a
-search, and a proof would replace it with a one-line inequality.
+antichain saves where no block does, and
+[tests/test_strong_lemma_frontier.py](tests/test_strong_lemma_frontier.py)
+pins the day the ranking dies. What neither says is *why* the sign reading
+holds. The honest statement is the one in the code: `antichain_saving_ceiling`
+is a search, and a proof would replace it with a one-line inequality.
 
 The reciprocal sum is not the criterion either. `N = 30` has `1/2 + 1/3 + 1/5 >
 1` and saves nothing, because `7 + 5 + 3 = 15` buys exactly the fifteen points
@@ -502,14 +535,16 @@ Everything the library computes and returns is `int` or
 `fractions.Fraction`. No comparison is decided by rounding and no optimum can
 be `1/3 - 1e-16`. `as_dict()` serialises every rational as `"n/d"`; `--json` on
 the CLI does the same. The single float in the package is the human-readable
-percentage the CLI prints next to the exact fraction — it is never compared,
-returned or stored.
+percentage the CLI prints next to the exact fraction, and the two reciprocal
+sums `strong_lemma_frontier` reports for a human to read beside the exact
+integers that decide. No comparison is ever made on either: the crossing is
+located with `Fraction` and confirmed with `int`, floors included.
 
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 170 tests
-exact-lattice-quantiles --self-test           # 34 checks, RC 0
+python -m unittest discover -s tests -t .     # 184 tests
+exact-lattice-quantiles --self-test           # 38 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,

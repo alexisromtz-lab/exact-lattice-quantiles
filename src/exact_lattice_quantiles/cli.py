@@ -30,8 +30,10 @@ from .lattice import universe
 from .pricing import (antichain_saving_ceiling, block_catalogue,
                       block_dominance_census, block_of, block_saving,
                       carrier_block_of, carrier_block_saving,
-                      exactness_frontier, price_exact,
-                      price_form_census, price_form_sweep)
+                      exactness_frontier, pair_antichain_of,
+                      pair_antichain_saving, price_exact,
+                      price_form_census, price_form_sweep,
+                      strong_lemma_frontier)
 from .solve import InfeasibleWithinBudget, ladder, solve_lattice_schedule
 
 RC_OK = 0
@@ -287,6 +289,44 @@ def _print_dominance(limit: int, as_json: bool) -> int:
                   f"{row['block']} on {tuple(row['block_witness'])}")
         return RC_ABOVE_CEILING
     print("  every saving is carried by the drop-one block")
+    print(f"  {census['sign_verdict']} (the reading the law needs)")
+    return RC_OK
+
+
+def _sci(value: int, places: int = 3) -> str:
+    """Scientific notation without touching float: these savings have hundreds of digits."""
+    text = str(abs(value))
+    mantissa = text[0] + "." + text[1:1 + places].ljust(places, "0")
+    return f"{'-' if value < 0 else ''}{mantissa}e+{len(text) - 1}"
+
+
+def _print_strong_lemma(max_primes: int, as_json: bool) -> int:
+    """The ranking reading of the lemma is false: publish where, in exact integers."""
+    report = strong_lemma_frontier(max_primes)
+    crossing = report["crossing_primes"]
+    if as_json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return RC_OK if crossing else RC_ABOVE_CEILING
+    print("ranking lemma: no antichain saves more than the block of its own "
+          "least common multiple")
+    if not crossing:
+        print(f"  no crossing below {max_primes} primes: the claim is NOT_MEASURED,"
+              " not confirmed")
+        return RC_ABOVE_CEILING
+    below = report["below"]
+    print(f"  crossing at {crossing} primes, the largest being "
+          f"{report['largest_prime']}")
+    if below:
+        print(f"  at {below['primes']:>3} primes (largest {below['largest_prime']}, "
+              f"{below['digits']}-digit period)  the block wins by "
+              f"{_sci(-below['excess'])}")
+    row = report["crossing"]
+    per_mille = row["excess"] * 100_000 // row["block_saving"]
+    print(f"  at {crossing:>3} primes (largest {row['largest_prime']}, "
+          f"{row['digits']}-digit period)  the pairs win by "
+          f"{_sci(row['excess'])} "
+          f"(+{per_mille // 1000}.{per_mille % 1000:03d} %)")
+    print(f"  verdict  {report['verdict']}")
     return RC_OK
 
 
@@ -427,6 +467,15 @@ def _self_test() -> int:
           carrier_block_saving(60, universe(840)), -14)
     check("the carrier universe keeps its first witness",
           exactness_frontier(2000)["witness"], (54, 90, 135))
+    frontier = strong_lemma_frontier(200)
+    check("the pairs beat the block from 176 primes on",
+          (frontier["crossing_primes"], frontier["largest_prime"]), (176, 1049))
+    check("and at 175 primes the block still wins, in exact integers",
+          frontier["below"]["excess"] < 0, True)
+    check("the pairs of 180 are the three products of two primes",
+          pair_antichain_of(180), (30, 18, 12))
+    check("which save nothing at all",
+          pair_antichain_saving(180) < 0, True)
     check("the price at 1080 is 135, not 139",
           price_exact(1080, (54, 90, 135)), 135)
     try:
@@ -540,6 +589,12 @@ def build_parser() -> argparse.ArgumentParser:
              "the block of its own least common multiple")
     p_dominance.add_argument("--max-period", type=int, default=2000)
 
+    p_strong = sub.add_parser(
+        "strong-lemma",
+        help="locate where the ranking reading of the lemma fails: the block is "
+             "not always the best-saving antichain")
+    p_strong.add_argument("--max-primes", type=int, default=400)
+
     p_verify = sub.add_parser(
         "verify-acta",
         help="recompute an acta's anchors from a manifest, naming every field"
@@ -587,6 +642,8 @@ def main(argv: list[str] | None = None) -> int:
             return _print_blocks(args.limit, args.json)
         if args.command == "dominance":
             return _print_dominance(args.max_period, args.json)
+        if args.command == "strong-lemma":
+            return _print_strong_lemma(args.max_primes, args.json)
         if args.command == "verify-acta":
             return _print_verify_acta(args.manifest, args.json, args.source)
     except ValueError as exc:

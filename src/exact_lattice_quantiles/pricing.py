@@ -27,7 +27,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from fractions import Fraction
 from functools import lru_cache
-from math import gcd, lcm
+from itertools import combinations
+from math import gcd, isqrt, lcm
 
 from .arithmetic import divisors, primes_of
 from .lattice import cell_widths, grids, universe
@@ -448,15 +449,18 @@ def antichain_saving_ceiling(period: int) -> tuple[int, tuple[int, ...]]:
 
 
 def block_dominance_census(limit: int) -> dict:
-    """Check the one lemma the law rests on, period by period.
+    """Check both readings of the lemma the law rests on, period by period.
 
-    If no saving ever beats the block of its own least common multiple, then a
-    cover built out of several grids cannot beat the block of the grid that
-    covers them all -- and the closed form's own bound is the optimum whenever
-    no block saves.  A violation here would be the first counterexample to
-    "the maximum saving comes from a drop-one block".
+    The **sign** reading is the one the law needs: if no block saves, no
+    antichain saves either, so a cover built out of several grids cannot beat
+    the closed form.  The **ranking** reading is stronger: the block of ``n``
+    is the antichain of least common multiple ``n`` that saves *most*.  The law
+    only needs the first, and the second is false in general -- see
+    :func:`strong_lemma_frontier` for the first period family that refutes it,
+    which no period up to ``limit`` reaches.
     """
     violations = []
+    sign_violations = []
     in_play = 0
     for period in range(2, limit + 1):
         ceiling, witness = antichain_saving_ceiling(period)
@@ -471,13 +475,133 @@ def block_dominance_census(limit: int) -> dict:
                 "block": block,
                 "block_witness": list(block_of(period)[0]),
             })
+        if ceiling > 0 and block <= 0:
+            sign_violations.append({
+                "period": period,
+                "ceiling": ceiling,
+                "witness": list(witness),
+            })
     return {
         "limit": limit,
         "periods": max(0, limit - 1),
         "in_play": in_play,
         "violations": violations,
+        "sign_violations": sign_violations,
         "verdict": "the block carries every saving" if not violations
                    else "the block does not carry every saving",
+        "sign_verdict": "no antichain saves where no block does"
+                        if not sign_violations
+                        else "an antichain saves where no block does",
+    }
+
+
+def pair_antichain_of(period: int) -> tuple[int, ...]:
+    """One grid per pair of primes of ``period``, descending.
+
+    For distinct primes ``p, q`` of ``period`` the grid ``period // (p * q)``
+    divides ``period``, and two such grids divide each other only when they come
+    from the same pair -- so the family is an antichain.  Its least common
+    multiple is ``period`` itself as soon as ``period`` has three primes, since
+    every prime keeps its full exponent in the pairs that avoid it.
+
+    With three primes the family is the three products of two primes --
+    ``{30, 18, 12}`` for ``180`` -- and it saves nothing at all, because a
+    product of two primes is a poor thing to merge: ``18 + 12`` against ``30``.
+    The family only pays once the primes are many and individually small, and
+    even then it takes a primorial to notice.
+    """
+    primes = primes_of(period)
+    return tuple(sorted((period // (a * b) for a, b in combinations(primes, 2)),
+                        reverse=True))
+
+
+def pair_antichain_saving(period: int) -> int:
+    """The points the pair antichain saves, by the rule every block is priced by."""
+    grids = pair_antichain_of(period)
+    if not grids:
+        return 0
+    return sum(d // 2 for d in grids) - lcm(*grids) // 2
+
+
+def _first_primes(count: int) -> list[int]:
+    """The first ``count`` primes, by sieve."""
+    if count <= 0:
+        return []
+    bound = 16
+    while True:
+        sieve = bytearray([1]) * (bound + 1)
+        sieve[0:2] = b"\x00\x00"
+        for i in range(2, isqrt(bound) + 1):
+            if sieve[i]:
+                sieve[i * i::i] = bytearray(len(range(i * i, bound + 1, i)))
+        found = [i for i, flag in enumerate(sieve) if flag]
+        if len(found) >= count:
+            return found[:count]
+        bound *= 2
+
+
+def strong_lemma_frontier(max_primes: int = 400) -> dict:
+    """Where the ranking reading of the lemma breaks: the first primorial that does it.
+
+    The block of ``period`` charges one grid per prime; the pair antichain
+    charges one grid per *pair* of primes.  Dividing both by ``period // 2``,
+    the block saves when the reciprocal sum of the primes passes ``1`` and the
+    pairs save when the second elementary symmetric function of the reciprocal
+    primes passes ``1``.  The first grows like ``log log`` and the second like
+    its square, so the pairs overtake the block -- and they do it late: at
+    ``176`` primes, the largest being ``1049``, where the excess is
+    ``0.08`` per cent of a saving with ``440`` digits.
+
+    The crossing is located with exact rational arithmetic and then confirmed
+    with the same integer rule the package prices blocks by, floors included,
+    on both sides of it.  So the refutation is not an artefact of dividing.
+    """
+    if max_primes < 3:
+        raise ValueError("max_primes must be at least 3")
+    primes = _first_primes(max_primes)
+    total = Fraction(0)
+    squares = Fraction(0)
+    below: dict | None = None
+    crossing: dict | None = None
+    for index, prime in enumerate(primes, 1):
+        total += Fraction(1, prime)
+        squares += Fraction(1, prime * prime)
+        pairs = (total * total - squares) / 2
+        row = {"primes": index, "largest_prime": prime,
+               "reciprocal_sum": float(total), "pair_sum": float(pairs)}
+        if pairs > total:
+            crossing = row
+            break
+        below = row
+    if crossing is None:
+        return {
+            "max_primes": max_primes,
+            "crossing_primes": None,
+            "largest_prime": None,
+            "verdict": "the block still carries the largest saving below "
+                       f"{max_primes} primes",
+            "crossing": None,
+            "below": below,
+        }
+    for row in (below, crossing) if below else (crossing,):
+        prime_set = primes[:row["primes"]]
+        product = 1
+        for p in prime_set:
+            product *= p
+        row["block_saving"] = (sum((product // p) // 2 for p in prime_set)
+                               - product // 2)
+        row["pair_saving"] = (sum((product // (a * b)) // 2
+                                  for a, b in combinations(prime_set, 2))
+                              - product // 2)
+        row["excess"] = row["pair_saving"] - row["block_saving"]
+        row["digits"] = len(str(product))
+    return {
+        "max_primes": max_primes,
+        "crossing_primes": crossing["primes"],
+        "largest_prime": crossing["largest_prime"],
+        "verdict": "the drop-one block is not the best-saving antichain",
+        "crossing": crossing,
+        "below": below,
     }
 
 
