@@ -508,8 +508,8 @@ returned or stored.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 150 tests
-exact-lattice-quantiles --self-test           # 31 checks, RC 0
+python -m unittest discover -s tests -t .     # 167 tests
+exact-lattice-quantiles --self-test           # 34 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,
@@ -548,6 +548,49 @@ stale, or the change was not intended — either way a human decides. Exit code
 empty list, an unknown kind, a missing field, or a **float** where an exact
 value belongs. A float is refused because it cannot express `1/3`, and an empty
 manifest is refused because verifying nothing is not a green light.
+
+### The other edge: the manifest against the acta it quotes
+
+A manifest could be perfectly consistent with this package and still cite a
+source that no longer says what it said. `source` closes that edge — the file,
+its blob, its line count, and the tables the manifest quotes:
+
+```json
+"source": {
+  "path": "acta_margen_secciones.py",
+  "blob": "a6975e65920af7f5c66dc238e5938aeba10c11e4",
+  "lines": 1606,
+  "tables": [
+    {"name": "FAMILIA_P54", "line": 240,
+     "columns": ["grids", "universe_size", "margin", "critical_divisor",
+                 "cost_cover", "cost_ceiling"]}
+  ]
+}
+```
+
+```
+exact-lattice-quantiles verify-acta <manifest> --source <acta.py>
+# 130 checks over 21 anchors: 130 reproduce, 0 divergent        RC 0
+```
+
+The acta is **parsed, not imported**: the reader walks the module's AST and
+evaluates literals only — integers, strings, tuples, dicts, and `Fraction(...)`
+/ `F(...)`. It never executes a line of a simulation just to read a table, and
+it refuses a float for the same reason the manifest refuses one. A table
+computed at run time therefore has to be written down before it can be quoted.
+
+Three verdicts, and they are not the same verdict:
+
+- a **blob that moved** while every quoted cell still agrees is `RC 0` with a
+  printed `MOVIDO`: the numbers hold, the citation of the source is stale. A
+  stale address is not a false claim.
+- a **cell that disagrees** is `RC 1`, naming `table[period].column` — the same
+  shape as a package divergence, so one reader covers both edges.
+- a source that **cannot be measured** (no git, missing table, a float, no
+  `source` block) is `RC 4 NO_MEDIDO`, which never degrades to `0`.
+
+A cell no anchor declares is reported as `sin ancla` rather than passed: an
+unmeasured cell is a blind spot with a name.
 
 ## Citation
 

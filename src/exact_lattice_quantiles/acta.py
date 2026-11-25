@@ -38,10 +38,13 @@ Anchor kinds.  Each states what it needs and what it may add::
 
 from __future__ import annotations
 
+import ast
 import json
+import subprocess
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
+from typing import Sequence
 
 from .ceiling import InfeasibleAboveInstanceCeiling, instance_ceiling
 from .lattice import cell_widths, grids, universe
@@ -70,6 +73,7 @@ class Check:
     field: str
     expected: object
     measured: object
+    subject: str = "package"
 
     @property
     def ok(self) -> bool:
@@ -78,7 +82,7 @@ class Check:
     def __str__(self) -> str:
         mark = "ok  " if self.ok else "FAIL"
         return (f"{mark}  #{self.anchor} {self.kind}.{self.field}: "
-                f"manifest {render(self.expected)}  package {render(self.measured)}")
+                f"manifest {render(self.expected)}  {self.subject} {render(self.measured)}")
 
 
 def render(value: object) -> str:
@@ -266,3 +270,229 @@ def verify_file(path: str | Path) -> list[Check]:
 def shipped_manifest() -> Path:
     """The manifest this package ships: the acta it is quoted by, field by field."""
     return Path(__file__).with_name("manifests") / "acta_margen_secciones_20261125.json"
+
+
+# ── the source: a blob declared and never read is a copied field ──────────────
+#
+# The manifest has always carried ``source.blob`` and ``source.lines``, and for a
+# while nothing read them.  That is the defect this section closes: a pointer
+# whose target is never measured is a copy, and two copies diverge.  The reader
+# below measures the acta itself, so the chain *acta -> manifest -> package* has
+# both of its edges checked by an instrument instead of by memory.
+
+_EXACT_CALLS = ("F", "Fraction")
+_INT_FIELDS = frozenset({"grids", "universe_size", "critical_divisor",
+                         "cost_cover", "cost_ceiling"})
+
+
+class SourceError(Exception):
+    """The acta cannot be measured at all.
+
+    Distinct from a divergence on purpose: a divergence (RC 1) is a measurement
+    that says *no*; this is a measurement that could not be taken, and it must
+    never be read as agreement.
+    """
+
+
+@dataclass(frozen=True)
+class SourceReport:
+    """What the acta says, next to what the manifest claims it says."""
+
+    path: str
+    blob: str
+    lines: int
+    declared_blob: object
+    declared_lines: object
+    tables: tuple[str, ...]
+    checks: tuple[Check, ...]
+    unanchored: tuple[str, ...]
+
+    @property
+    def moved(self) -> bool:
+        """The file is not the object the manifest cites."""
+        return self.declared_blob is not None and self.declared_blob != self.blob
+
+    @property
+    def divergent(self) -> tuple[Check, ...]:
+        return tuple(check for check in self.checks if not check.ok)
+
+
+def _exact_node(node: ast.AST, where: str) -> object:
+    """Evaluate one literal of an acta, exactly.  No names, no calls but ``F``."""
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, bool) or isinstance(node.value, float):
+            raise SourceError(
+                f"{where}: {node.value!r} is not exact; a table quoted as a "
+                "measurement holds integers and fractions, never a rounding")
+        if isinstance(node.value, (int, str)):
+            return node.value
+        raise SourceError(f"{where}: {type(node.value).__name__} is not exact arithmetic")
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        value = _exact_node(node.operand, where)
+        if isinstance(value, bool) or not isinstance(value, (int, Fraction)):
+            raise SourceError(f"{where}: cannot negate {value!r}")
+        return -value
+    if isinstance(node, ast.Dict):
+        out: dict[object, object] = {}
+        for key_node, value_node in zip(node.keys, node.values):
+            if key_node is None:
+                raise SourceError(f"{where}: dict unpacking is not a table")
+            out[_exact_node(key_node, where)] = _exact_node(value_node, where)
+        return out
+    if isinstance(node, (ast.Tuple, ast.List)):
+        return tuple(_exact_node(element, where) for element in node.elts)
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            and node.func.id in _EXACT_CALLS and not node.keywords):
+        args = [_exact_node(arg, where) for arg in node.args]
+        if not 1 <= len(args) <= 2:
+            raise SourceError(f"{where}: {node.func.id}() takes one or two arguments")
+        for arg in args:
+            if isinstance(arg, bool) or not isinstance(arg, int):
+                raise SourceError(f"{where}: {node.func.id}{tuple(args)!r} is not a rational")
+        return Fraction(*args)
+    raise SourceError(
+        f"{where}: this is not a literal.  The reader evaluates literals only and "
+        "never imports the acta, so a table computed at run time has to be written "
+        "down before it can be quoted")
+
+
+def parse_tables(text: str, names: Sequence[str]) -> dict[str, object]:
+    """Read ``name = <literal>`` at module level.  The acta is parsed, not imported."""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError as exc:
+        raise SourceError(f"the acta is not Python: {exc}") from None
+    found: dict[str, object] = {}
+    for node in tree.body:
+        target = None
+        value = None
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target, value = node.targets[0], node.value
+        elif isinstance(node, ast.AnnAssign):
+            target, value = node.target, node.value
+        if isinstance(target, ast.Name) and target.id in names and value is not None:
+            found[target.id] = _exact_node(value, f"{target.id} (l. {node.lineno})")
+    missing = [name for name in names if name not in found]
+    if missing:
+        raise SourceError("the acta assigns no " + ", ".join(missing)
+                          + ": the manifest cites a table that is not there")
+    return found
+
+
+def _declared_tables(data: object) -> list[dict]:
+    source = data.get("source") if isinstance(data, dict) else None
+    if not isinstance(source, dict):
+        raise SourceError("the manifest declares no 'source' to measure the acta against")
+    tables = source.get("tables")
+    if not isinstance(tables, list) or not tables:
+        raise SourceError("the manifest's 'source' names no 'tables'")
+    out: list[dict] = []
+    for index, spec in enumerate(tables):
+        if not isinstance(spec, dict):
+            raise SourceError(f"source.tables[{index}]: must be a JSON object")
+        name, columns = spec.get("name"), spec.get("columns")
+        if not isinstance(name, str):
+            raise SourceError(f"source.tables[{index}]: needs a string 'name'")
+        if not isinstance(columns, list) or not columns:
+            raise SourceError(f"source.tables[{index}]: needs a non-empty 'columns' list")
+        for column in columns:
+            if not isinstance(column, str):
+                raise SourceError(f"source.tables[{index}]: column names must be strings")
+        out.append(spec)
+    return out
+
+
+def _anchor_exact(anchor: dict, column: str, where: str) -> object:
+    if column in _INT_FIELDS:
+        return _int(anchor[column], f"{where}: {column}")
+    if column in ("margin", "robust_margin"):
+        return _exact(anchor[column], f"{where}: {column}")
+    raise SourceError(f"{where}: the manifest's tables declare a column {column!r} "
+                      "this package cannot compare")
+
+
+def anchor_table_checks(data: object, raw: dict[str, object]) -> tuple[list[Check], tuple[str, ...]]:
+    """Compare every anchor field that the acta's tables also declare.
+
+    The manifest was already checked against the package; this is the missing
+    edge, manifest against acta.  Cells that no anchor declares come back as
+    ``unanchored``: an unmeasured cell is a blind spot with a name, not a pass.
+    """
+    anchors = data.get("anchors") if isinstance(data, dict) else None
+    if not isinstance(anchors, list):
+        raise SourceError("manifest has no 'anchors' list")
+    checks: list[Check] = []
+    covered: set[tuple[str, object, str]] = set()
+    for spec in _declared_tables(data):
+        name, columns = spec["name"], tuple(spec["columns"])
+        rows = raw[name]
+        if not isinstance(rows, dict):
+            raise SourceError(f"{name}: a table cited by period must map periods to rows")
+        for index, anchor in enumerate(anchors):
+            if not isinstance(anchor, dict) or anchor.get("kind") != "ceiling":
+                continue
+            period = anchor.get("period")
+            if isinstance(period, bool) or not isinstance(period, int) or period not in rows:
+                continue
+            row = rows[period]
+            values = row if len(columns) > 1 else (row,)
+            if not isinstance(values, tuple) or len(values) != len(columns):
+                raise SourceError(
+                    f"{name}[{period}]: the manifest declares {len(columns)} columns, "
+                    f"the acta's row has {len(values) if isinstance(values, tuple) else 1}")
+            for column, value in zip(columns, values):
+                if column not in anchor:
+                    continue
+                covered.add((name, period, column))
+                expected = _anchor_exact(anchor, column, f"anchor {index} (ceiling)")
+                checks.append(Check(index, "source", f"{name}[{period}].{column}",
+                                    expected, value, subject="acta"))
+    unanchored: list[str] = []
+    for spec in _declared_tables(data):
+        name, columns = spec["name"], tuple(spec["columns"])
+        for period in raw[name]:
+            for column in columns:
+                if (name, period, column) not in covered:
+                    unanchored.append(f"{name}[{period}].{column}")
+    return checks, tuple(unanchored)
+
+
+def read_blob(path: str | Path) -> str:
+    """The git object id of the file: the address the manifest cites."""
+    try:
+        done = subprocess.run(["git", "hash-object", str(path)],
+                              capture_output=True, text=True)
+    except OSError as exc:
+        raise SourceError(f"cannot run git to measure the blob: {exc}") from None
+    if done.returncode != 0:
+        raise SourceError(f"git hash-object refused {path}: "
+                          f"{done.stderr.strip() or done.returncode}")
+    blob = done.stdout.strip()
+    if len(blob) != 40:
+        raise SourceError(f"git hash-object returned {blob!r}, not an object id")
+    return blob
+
+
+def inspect_source(path: str | Path, data: object) -> SourceReport:
+    """Measure a live acta against the manifest that quotes it."""
+    target = Path(path)
+    try:
+        text = target.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise SourceError(f"cannot read {path}: {exc.strerror or exc}") from None
+    declared = data.get("source") if isinstance(data, dict) else None
+    if not isinstance(declared, dict):
+        raise SourceError("the manifest declares no 'source' to measure the acta against")
+    specs = _declared_tables(data)
+    raw = parse_tables(text, [spec["name"] for spec in specs])
+    checks, unanchored = anchor_table_checks(data, raw)
+    return SourceReport(
+        path=str(target),
+        blob=read_blob(target),
+        lines=text.count("\n") + (0 if text.endswith("\n") else 1),
+        declared_blob=declared.get("blob"),
+        declared_lines=declared.get("lines"),
+        tables=tuple(spec["name"] for spec in specs),
+        checks=tuple(checks),
+        unanchored=unanchored,
+    )
