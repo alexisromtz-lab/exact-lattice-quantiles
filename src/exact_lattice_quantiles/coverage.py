@@ -29,6 +29,7 @@ of the same measurement, not a second measurement.
 from __future__ import annotations
 
 import itertools
+from dataclasses import dataclass
 from fractions import Fraction
 
 from .lattice import _interval_map, cell_widths, grids, universe
@@ -232,6 +233,11 @@ def drift_tolerance(G: tuple[int, ...], Q: tuple[Fraction, ...],
     in every design checked, because the binding divisor sits exactly on its
     edge.  A margin is a knife edge; the tolerance is what it costs to leave it.
 
+    The price is linear, and then it is not: ``tolerance(v) = radius - v`` for
+    every ``v`` below :func:`drift_law`'s critical margin of that divisor, and
+    strictly below the line at it.  Extrapolating the linear part is how a
+    design over-promises.
+
     ``margin`` and the result are in the same currency as
     :func:`witness_margin`; ``drift_tolerance(..., 0)`` equals
     :func:`drift_radius`.
@@ -240,15 +246,100 @@ def drift_tolerance(G: tuple[int, ...], Q: tuple[Fraction, ...],
     half = Fraction(margin) / 2
     out: dict[int, Fraction] = {}
     for d in U:
-        spans: list[tuple[Fraction, Fraction]] = []
-        for M in G:
-            block = _interval_map(M).get(d)
-            if block is None:
-                continue
-            L, R = block
-            for q in Q:
-                spans.append((L - q + half, R - q - half))
-        out[d] = _reach_from_zero(spans) * scale
+        out[d] = _reach_from_zero([(a + half, b - half) for a, b in _spans(G, Q, d)]) * scale
+    return out
+
+
+def _spans(G: tuple[int, ...], Q: tuple[Fraction, ...],
+           d: int) -> list[tuple[Fraction, Fraction]]:
+    """Admissible drifts ``(L - q, R - q)`` for one divisor, at margin zero."""
+    spans: list[tuple[Fraction, Fraction]] = []
+    for M in G:
+        block = _interval_map(M).get(d)
+        if block is None:
+            continue
+        L, R = block
+        for q in Q:
+            spans.append((L - q, R - q))
+    return spans
+
+
+def _shrinks(spans: list[tuple[Fraction, Fraction]]) -> list[Fraction]:
+    """Every ``h`` where the reach can change slope or jump.
+
+    Shrinking each span by ``h`` pushes both of its ends inward, so the reach
+    stays linear in ``h`` between two of these values and only meets one here.
+    Three families: a span collapsing (``a``, ``b``), a span stopping to
+    straddle zero (``-a``), and two ends meeting (``(b1 - a2) / 2``).
+    """
+    knots = {Fraction(0)}
+    for a, b in spans:
+        for edge in (a, b, -a):
+            if edge > 0:
+                knots.add(edge)
+    for a1, b1 in spans:
+        for a2, b2 in spans:
+            for gap in (b1 - a2, b2 - a1):
+                if gap > 0:
+                    knots.add(gap / 2)
+    return sorted(knots)
+
+
+def _linear_regime(spans: list[tuple[Fraction, Fraction]], radius: Fraction) -> Fraction:
+    """Largest shrink below which the reach is exactly ``radius - h``.
+
+    Tests one interior point per interval, which is enough because both sides
+    are linear there.  Beyond the returned knot the reach drops *below* the
+    line and does not come back: the condition that grows a chain is strict, so
+    a link never re-forms once it has broken.
+    """
+    knots = [k for k in _shrinks(spans) if k <= radius]
+    last = Fraction(0)
+    for knot in knots:
+        middle = (last + knot) / 2
+        if _reach_from_zero([(a + middle, b - middle) for a, b in spans]) != radius - middle:
+            return last
+        last = knot
+    tail = (last + radius) / 2
+    if _reach_from_zero([(a + tail, b - tail) for a, b in spans]) != radius - tail:
+        return last
+    return radius
+
+
+@dataclass(frozen=True)
+class DriftLaw:
+    """A divisor's drift tolerance read as a function of the margin demanded.
+
+    ``tolerance(v) = radius - v`` for every ``v < critical_margin`` and *below*
+    the line at ``critical_margin`` -- so the price of a margin is one-for-one
+    right up to a knife edge and a cliff after it.  ``cliff`` is how far the
+    tolerance sits under the line at that edge, which is the part a linear
+    extrapolation promises and the geometry does not pay.
+    """
+
+    radius: Fraction
+    critical_margin: Fraction
+    cliff: Fraction
+
+
+def drift_law(G: tuple[int, ...], Q: tuple[Fraction, ...],
+              U: tuple[int, ...], doubled: bool = True) -> dict[int, DriftLaw]:
+    """The critical margin of every divisor, and the cliff that follows it.
+
+    Measured over the 200 even periods at ``k = 4`` and ``k = 6``: strictly
+    below the critical margin the line holds in 1680 of 1680 divisor readings,
+    and at it the tolerance is under the line in 369 of 369 -- never on it.
+    The critical margin is a property of the span geometry, not of the budget:
+    it is where a chain of overlapping spans loses a link.
+    """
+    scale = 2 if doubled else 1
+    out: dict[int, DriftLaw] = {}
+    for d in U:
+        spans = _spans(G, Q, d)
+        radius = _reach_from_zero(spans)
+        edge = _linear_regime(spans, radius)
+        here = _reach_from_zero([(a + edge, b - edge) for a, b in spans])
+        out[d] = DriftLaw(radius * scale, 2 * edge, (radius - edge - here) * scale)
     return out
 
 

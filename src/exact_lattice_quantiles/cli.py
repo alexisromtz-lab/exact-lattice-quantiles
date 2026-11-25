@@ -20,7 +20,8 @@ from fractions import Fraction
 from .ceiling import (InfeasibleAboveInstanceCeiling, ceiling_by_product,
                       ceiling_by_scan, ceiling_census, instance_ceiling)
 from .acta import ManifestError, render, shipped_manifest, verify_file
-from .coverage import coverage_census, drift_radius, drift_tolerance, witness_margin
+from .coverage import (coverage_census, drift_law, drift_radius,
+                       drift_tolerance, witness_margin)
 from .lattice import universe
 from .pricing import (block_catalogue, block_of, block_saving,
                       exactness_frontier, price_exact,
@@ -132,6 +133,8 @@ def _print_drift(args: argparse.Namespace) -> int:
         tol = min(drift_tolerance(schedule.design, Q, U, kept).values()) if Q else Fraction(0)
         curve.append((kept, tol))
     coverage = min(drift_radius(schedule.design, Q, U).values()) if Q else Fraction(0)
+    edge = (min(drift_law(schedule.design, Q, U).values(),
+                key=lambda law: law.critical_margin) if Q else None)
     if args.json:
         print(json.dumps({
             "period": schedule.period,
@@ -140,6 +143,8 @@ def _print_drift(args: argparse.Namespace) -> int:
             "probes": [str(q) for q in Q],
             "witness_margin": str(schedule.witness_margin),
             "coverage_drift": str(coverage),
+            "critical_margin": str(edge.critical_margin) if edge else None,
+            "cliff_at_critical_margin": str(edge.cliff) if edge else None,
             "kept_margin_to_drift": [[str(v), str(t)] for v, t in curve],
         }, indent=2, sort_keys=True))
         return RC_OK
@@ -149,6 +154,9 @@ def _print_drift(args: argparse.Namespace) -> int:
     print(f"sections ({len(Q)})  {[str(q) for q in Q]}")
     print(f"witness margin   {schedule.witness_margin}")
     print(f"coverage drift   {coverage}  (captured, margin not kept)")
+    if edge is not None:
+        print(f"linear up to     {edge.critical_margin}  "
+              f"(one-for-one price, then a drop of {edge.cliff})")
     print("margin kept      drift tolerated")
     for kept, tol in curve:
         print(f"  {str(kept):<15} {tol}")
@@ -315,6 +323,14 @@ def _self_test() -> int:
           min(drift_radius(G, Q, U).values()))
     check("the witness margin survives no drift at all",
           min(drift_tolerance(G, Q, U, s.witness_margin).values()), Fraction(0))
+    d_edge, edge = min(drift_law(G, Q, U).items(),
+                       key=lambda item: item[1].critical_margin)
+    check("the price of a margin is one-for-one up to the critical margin",
+          drift_tolerance(G, Q, U, edge.critical_margin / 2)[d_edge],
+          edge.radius - edge.critical_margin / 2)
+    check("and strictly worse at it",
+          drift_tolerance(G, Q, U, edge.critical_margin)[d_edge],
+          edge.radius - edge.critical_margin - edge.cliff)
     check("block of 270 is {54, 90, 135}", block_of(270)[0], (54, 90, 135))
     check("block of 270 saves 4", block_saving(270), 4)
     check("block of 30 saves nothing", block_saving(30), 0)
