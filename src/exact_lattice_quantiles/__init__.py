@@ -37,9 +37,9 @@ from .arithmetic import (divisors, dropped_primes, euler_phi, mass,
 from .ceiling import (Ceiling, InfeasibleAboveInstanceCeiling,
                       ceiling_by_product, ceiling_by_scan, ceiling_census,
                       instance_ceiling)
-from .coverage import (best_probes, design_margin, drift_radius,
-                       drift_tolerance, margin_ladder, minimum_cost_design,
-                       minimum_probes, witness_margin)
+from .coverage import (DriftLaw, best_probes, design_margin, drift_law,
+                       drift_radius, drift_tolerance, margin_ladder,
+                       minimum_cost_design, minimum_probes, witness_margin)
 from .lattice import (carriers, cell_intervals, cell_width, cell_widths, grids,
                       seats, universe, universe_from_factorization, widths)
 from .pricing import (PriceFormCensus, best_block_saving, block_catalogue,
@@ -50,7 +50,7 @@ from .pricing import (PriceFormCensus, best_block_saving, block_catalogue,
 from .solve import (OK, PROBES_INSUFFICIENT, InfeasibleWithinBudget, Schedule,
                     ladder, solve_lattice_schedule)
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "Ceiling",
@@ -75,7 +75,9 @@ __all__ = [
     "cell_width",
     "cell_widths",
     "design_margin",
+    "DriftLaw",
     "divisors",
+    "drift_law",
     "drift_radius",
     "drift_tolerance",
     "exactness_frontier",

@@ -384,6 +384,45 @@ Two figures changed with the repair, both in the direction of the geometry:
 `k = 4` on the cheap design holds `1/15` rather than the inflated `2/33`, and
 the coverage radius of the design above is `7/30` rather than `37/210`.
 
+## The price of a margin is one-for-one, until it is not
+
+`drift_tolerance` does not merely shrink with the margin demanded — it shrinks
+*linearly*, and then it falls off a cliff:
+
+```
+tolerance(v) = radius - v        for every v < critical_margin
+tolerance(v) < radius - v        at  v = critical_margin
+```
+
+`drift_law` returns the edge per divisor, plus the size of the drop at it. On
+`T = 180` at `k = 4` the sections cover a common drift of `1/3` at zero margin,
+but the one-for-one regime ends at `1/30` — after that, demanding `1/10` more
+margin costs `1/3` of tolerance rather than `1/10`:
+
+```
+$ exact-lattice-quantiles drift 180 --max-cost 64 --probes 4 --min-margin 1/3
+coverage drift   1/3  (captured, margin not kept)
+linear up to     1/30  (one-for-one price, then a drop of 1/3)
+margin kept      drift tolerated
+  1/3             0
+  1/4             1/12
+  1/6             1/6
+  1/12            1/4
+  0               1/3
+```
+
+Read that table twice: the last two rows are below the edge, so they lie exactly
+on the line `1/3 - v`; the first two are past it and do not. The edge is where a
+chain of overlapping drift spans loses a link, so it is a knot of the span
+geometry and both numbers stay rational.
+
+Measured over the 200 even periods at `k = 4` and `k = 6`, 800 divisors in all:
+strictly below the edge the line holds in **1680 of 1680** divisor readings, and
+at the edge the tolerance is under the line in **369 of 369** — never on it.
+[tests/test_drift_law.py](tests/test_drift_law.py) pins both halves; the second
+one fails if `_linear_regime` is replaced by "the line holds everywhere", which
+is the extrapolation this section exists to refuse.
+
 ## Exactness
 
 Everything the library computes and returns is `int` or
@@ -396,8 +435,8 @@ returned or stored.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 124 tests
-exact-lattice-quantiles --self-test           # 13 checks, RC 0
+python -m unittest discover -s tests -t .     # 128 tests
+exact-lattice-quantiles --self-test           # 21 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,
