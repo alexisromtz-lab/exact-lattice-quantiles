@@ -27,8 +27,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from fractions import Fraction
 from functools import lru_cache
-from math import gcd
+from math import gcd, lcm
 
+from .arithmetic import divisors, primes_of
 from .lattice import cell_widths, grids, universe
 
 _INF = 10**9
@@ -122,17 +123,44 @@ def _cheapest(period: int, reduced: bool
 def price_exact(period: int, needed: tuple[int, ...], reduced: bool = True) -> int:
     """Cheapest design covering every element of ``needed``.
 
-    The minimum over designs, by dynamic programming over the ``2^|U|``
-    coverage masks.  No closed form.
+    The minimum over designs, by dynamic programming, and the state is the
+    **antichain of maximal elements of the request**, not the universe: a grid
+    that covers ``b`` covers every divisor of ``b`` for free, so a request costs
+    exactly what its maximals cost.  Covering more never costs less, so the
+    minimum over covers of a superset is the minimum over covers of the
+    maximals, which is why the two agree on every request -- checked against the
+    ``2^|U|`` table on all 8 388 607 requests over the divisors of 360.
+
+    The state space is therefore ``2^k`` with ``k`` the number of maximals, and
+    that is what makes the price of ``{54, 90, 135}`` in period ``1080``
+    answerable: the full table there is ``2^23`` masks, the maximals are three.
     """
-    U, best, _ = _cheapest(period, reduced)
-    mask = 0
+    U = universe(period) if reduced else grids(period)
     for d in needed:
-        mask |= 1 << U.index(d)
-    cost = best[mask]
-    if cost >= _INF:  # pragma: no cover - every divisor is covered by its grid
-        raise ValueError(f"request {needed} is not coverable in period {period}")
-    return cost
+        if d not in U:
+            raise ValueError(
+                f"request {needed} is not coverable in period {period}")
+    A = maximal_divisors(tuple(sorted(set(needed))))
+    k = len(A)
+    if k == 0:
+        return 0
+    best = [_INF] * (1 << k)
+    best[0] = 0
+    for M in grids(period):
+        mask = 0
+        for i, a in enumerate(A):
+            if M % a == 0:
+                mask |= 1 << i
+        if not mask:
+            continue
+        cost = M // 2
+        nxt = list(best)
+        for s in range(1 << k):
+            v = best[s]
+            if v < _INF and v + cost < nxt[s | mask]:
+                nxt[s | mask] = v + cost
+        best = nxt
+    return best[(1 << k) - 1]
 
 
 @dataclass(frozen=True)
@@ -318,22 +346,127 @@ def best_block_saving(needed: tuple[int, ...]) -> tuple[int, tuple[int, ...], in
     return best[0], best[1], best[2], best[3]
 
 
-def exactness_frontier(max_period: int = 8000) -> dict:
-    """The first even period whose reduced universe the closed form misprices.
+def block_of(n: int) -> tuple[tuple[int, ...], int]:
+    """The drop-one block of ``n`` and the grid that covers it whole.
 
-    The census this package published says the closed form *is* the minimum
-    over ``U(T)`` for all 200 even periods to 400.  True, and bounded: the
-    first period where it fails is ``1080``, where ``{54, 90, 135}`` costs
-    ``139`` bought separately and ``135`` as the single grid ``270``.  A census
-    without its boundary reads as a law, and the boundary is not where a static
-    reading predicts it -- ``2520`` is the same block with ``m = 9`` at more
-    than twice the period.
+    ``{n // p}`` over the distinct primes ``p`` of ``n``, keeping only the
+    entries that are carriers.  The block is an antichain by construction --
+    primes are distinct, so no entry divides another -- and the one grid that
+    covers all of it is its least common multiple, which is ``n`` only when
+    every prime power of ``n`` survives a division.  ``(54, 90, 135)`` is the
+    block of ``270``; ``(12, 20, 30)`` the block of ``60``; the prime ``2``
+    leaves nothing and the prime square ``4`` leaves ``{2}``, whose least common
+    multiple is ``2`` and not ``4``.
+    """
+    block = tuple(sorted(d for d in (n // p for p in primes_of(n)) if d >= 2))
+    if not block:
+        return (), 1
+    return block, lcm(*block)
+
+
+def block_saving(n: int) -> int:
+    """The points the closed form overcharges on the drop-one block of ``n``.
+
+    ``sum(d // 2 for d in block) - lcm(block) // 2``, exact integer arithmetic.
+    It is about ``(n / 2) * (sum(1 / p) - 1)`` over the primes of ``n``, so the
+    criterion is a sum of reciprocal primes -- and the floors are not noise:
+    ``n = 30`` has reciprocal sum ``31 / 30`` above one and still saves nothing,
+    because ``6 + 10 + 15 = 31`` against ``30`` buys the same thirty points.
+
+    A negative result is not an error: ``{2, 3}`` costs ``2`` apart and ``3``
+    whole, so a small number is priced *better* by buying its parts.
+    """
+    block, whole = block_of(n)
+    return sum(d // 2 for d in block) - whole // 2
+
+
+def block_catalogue(limit: int) -> tuple[tuple[int, int, tuple[int, ...]], ...]:
+    """Every ``n <= limit`` whose block saves and that no divisor of it improves.
+
+    The divisibility-minimal set is the useful one: if ``d`` divides ``n`` and
+    ``d`` already saves, then ``n`` is a scaled copy of a smaller block.  This
+    is the design table -- a period divisible by one of these has a request the
+    closed form misprices.
+    """
+    saving = {n: block_saving(n) for n in range(2, limit + 1)}
+    out = []
+    for n in range(2, limit + 1):
+        if saving[n] <= 0:
+            continue
+        if any(saving.get(d, 0) > 0 for d in divisors(n) if d != n):
+            continue
+        out.append((n, saving[n], block_of(n)[0]))
+    return tuple(out)
+
+
+def frontier_by_blocks(max_period: int) -> dict:
+    """The frontier over the full divisor universe ``D(T)``, by the block law.
+
+    Over ``D(T)`` no search is needed: a period is mispriced exactly when one of
+    its divisors has a drop-one block that saves, so the answer is a
+    divisibility statement.  Measured against the exhaustive block search on
+    every even period to 2000 the law and the search agree on all 1000, with
+    the same witness and the same saving.
+
+    The first period is ``60``: ``{12, 20, 30}`` costs ``31`` bought apart and
+    ``30`` as the single grid ``60``.  The reduced universe ``U(T)`` is 18 times
+    later, which is the whole point of naming the universe.
+    """
+    saving = {n: block_saving(n) for n in range(2, max_period + 1)}
+    breaks = []
+    for period in range(2, max_period + 1, 2):
+        best = max(((saving.get(d, 0), d) for d in divisors(period)),
+                   default=(0, 0))
+        if best[0] > 0:
+            breaks.append((period, best[0], best[1]))
+    scanned = max_period // 2
+    if not breaks:
+        return {"period": None, "saving": 0, "witness": (), "bound": 0,
+                "cover": 0, "grid": 0, "breaks": 0, "scanned": scanned,
+                "universe": "D(T)", "law": "blocks"}
+    period, s, n = breaks[0]
+    block, grid = block_of(n)
+    return {
+        "period": period,
+        "saving": s,
+        "witness": block,
+        "bound": sum(d // 2 for d in block),
+        "cover": grid // 2,
+        "grid": grid,
+        "breaks": len(breaks),
+        "scanned": scanned,
+        "universe": "D(T)",
+        "law": "blocks",
+    }
+
+
+def exactness_frontier(max_period: int = 8000, reduced: bool = True) -> dict:
+    """The first even period whose universe the closed form misprices.
+
+    The frontier is a property of the **universe**, and the two answers differ
+    by a factor of eighteen:
+
+    ``D(T)``, every divisor, is ``60`` -- ``{12, 20, 30}`` costs ``31`` bought
+    apart and ``30`` as the single grid ``60``.  There no search is needed: the
+    block law of :func:`block_saving` decides it in ``O(tau(T))``, and the law
+    matches the exhaustive block search on all 1000 even periods to 2000, same
+    witness and same saving.
+
+    ``U(T)``, the reduced carriers, is ``1080`` -- ``{54, 90, 135}``, ``139``
+    against ``135``.  Here the law of divisors is *necessary and not
+    sufficient*: reducing to carriers deletes witnesses.  ``840`` carries ``12``
+    and ``20`` but not ``30``, so it inherits no block from ``60``; and of the
+    16 breaks below 8000, nine have witnesses that are no divisor's whole block.
+    So ``reduced=True`` still searches, and this docstring is not a proof.
 
     The witness is certified by the cover, not by a DP: ``{lcm(witness)}`` is a
     legal design that covers the block, so its price is an upper bound the DP
-    would only confirm.  At ``1080`` the DP is ``2^23`` masks and at ``2520``
-    it is ``2^32``; the certificate has to survive where the search cannot run.
+    would only confirm.  At ``1080`` the DP was ``2^23`` masks and at ``2520``
+    ``2^32`` -- the certificate has to survive where the search cannot run, and
+    :func:`price_exact` now runs there too by taking the maximals only.
     """
+    if not reduced:
+        return frontier_by_blocks(max_period)
     breaks: list[tuple[int, int, tuple[int, ...], int, int]] = []
     for period in range(2, max_period + 1, 2):
         saving, witness, bound, cover = best_block_saving(universe(period))
@@ -342,7 +475,8 @@ def exactness_frontier(max_period: int = 8000) -> dict:
     scanned = max_period // 2
     if not breaks:
         return {"period": None, "saving": 0, "witness": (), "bound": 0,
-                "cover": 0, "grid": 0, "breaks": 0, "scanned": scanned}
+                "cover": 0, "grid": 0, "breaks": 0, "scanned": scanned,
+                "universe": "U(T)", "law": "search"}
     period, saving, witness, bound, cover = breaks[0]
     return {
         "period": period,
@@ -353,6 +487,8 @@ def exactness_frontier(max_period: int = 8000) -> dict:
         "grid": _lcm_grid(witness),
         "breaks": len(breaks),
         "scanned": scanned,
+        "universe": "U(T)",
+        "law": "search",
     }
 
 

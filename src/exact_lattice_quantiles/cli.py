@@ -20,7 +20,9 @@ from .ceiling import (InfeasibleAboveInstanceCeiling, ceiling_by_product,
                       ceiling_by_scan, ceiling_census, instance_ceiling)
 from .coverage import coverage_census, drift_radius, drift_tolerance, witness_margin
 from .lattice import universe
-from .pricing import exactness_frontier, price_form_census, price_form_sweep
+from .pricing import (block_catalogue, block_of, block_saving,
+                      exactness_frontier, price_exact,
+                      price_form_census, price_form_sweep)
 from .solve import InfeasibleWithinBudget, ladder, solve_lattice_schedule
 
 RC_OK = 0
@@ -213,22 +215,35 @@ def _print_price_sweep(low: int, high: int, as_json: bool) -> int:
     return RC_OK
 
 
-def _print_frontier(max_period: int, as_json: bool) -> int:
-    data = exactness_frontier(max_period)
+def _print_frontier(max_period: int, reduced: bool, as_json: bool) -> int:
+    data = exactness_frontier(max_period, reduced=reduced)
     if as_json:
         print(json.dumps({**data, "witness": list(data["witness"])},
                          indent=2, sort_keys=True))
         return RC_OK
     if data["period"] is None:
-        print(f"even periods 2..{max_period}: the closed form is the price"
-              f" on every one of the {data['scanned']} censused")
+        print(f"even periods 2..{max_period} over {data['universe']}: the closed"
+              f" form is the price on every one of the {data['scanned']} censused")
         return RC_OK
-    print(f"even periods 2..{max_period}: {data['breaks']} of"
-          f" {data['scanned']} mispriced, first at T = {data['period']}")
+    print(f"even periods 2..{max_period} over {data['universe']}: {data['breaks']}"
+          f" of {data['scanned']} mispriced, first at T = {data['period']}")
     print(f"  witness                    {data['witness']}")
     print(f"  closed form                {data['bound']} points")
     print(f"  one grid {data['grid']:<18}{data['cover']} points")
     print(f"  saving                     {data['saving']} points")
+    print(f"  decided by                 {data['law']}")
+    return RC_OK
+
+
+def _print_blocks(limit: int, as_json: bool) -> int:
+    rows = block_catalogue(limit)
+    if as_json:
+        print(json.dumps([{"n": n, "saving": s, "block": list(b)}
+                          for n, s, b in rows], indent=2, sort_keys=True))
+        return RC_OK
+    print(f"divisibility-minimal blocks up to {limit}: {len(rows)}")
+    for n, s, b in rows:
+        print(f"  {n:>6}  saves {s:>3}  {b}")
     return RC_OK
 
 
@@ -270,6 +285,15 @@ def _self_test() -> int:
           min(drift_radius(G, Q, U).values()))
     check("the witness margin survives no drift at all",
           min(drift_tolerance(G, Q, U, s.witness_margin).values()), Fraction(0))
+    check("block of 270 is {54, 90, 135}", block_of(270)[0], (54, 90, 135))
+    check("block of 270 saves 4", block_saving(270), 4)
+    check("block of 30 saves nothing", block_saving(30), 0)
+    check("every divisor universe misprices first at 60",
+          exactness_frontier(2000, reduced=False)["period"], 60)
+    check("every carrier universe misprices first at 1080",
+          exactness_frontier(2000)["period"], 1080)
+    check("the price at 1080 is 135, not 139",
+          price_exact(1080, (54, 90, 135)), 135)
     return RC_OK if ok else RC_ABOVE_CEILING
 
 
@@ -342,6 +366,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_frontier = sub.add_parser(
         "frontier", help="the first period the closed form misprices")
     p_frontier.add_argument("--max-period", type=int, default=8000)
+    p_frontier.add_argument(
+        "--universe", choices=("reduced", "all"), default="reduced",
+        help="reduced carriers U(T) (searched) or every divisor D(T) (decided"
+             " by the block law)")
+
+    p_blocks = sub.add_parser(
+        "blocks", help="the divisibility-minimal blocks that save anything")
+    p_blocks.add_argument("--limit", type=int, default=2000)
     return parser
 
 
@@ -375,7 +407,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "prices":
             return _print_price_sweep(args.low, args.high, args.json)
         if args.command == "frontier":
-            return _print_frontier(args.max_period, args.json)
+            return _print_frontier(args.max_period,
+                                   args.universe == "reduced", args.json)
+        if args.command == "blocks":
+            return _print_blocks(args.limit, args.json)
     except ValueError as exc:
         print(f"BAD_REQUEST: {exc}", file=sys.stderr)
         return RC_BAD_REQUEST

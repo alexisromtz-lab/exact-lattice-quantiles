@@ -200,17 +200,76 @@ period 2. The first mispriced period is `T = 1080`, with the witness
 
 ```
 $ exact-lattice-quantiles frontier
-even periods 2..8000: 16 of 4000 mispriced, first at T = 1080
+even periods 2..8000 over U(T): 16 of 4000 mispriced, first at T = 1080
   witness                    (54, 90, 135)
   closed form                139 points
   one grid 270               135 points
   saving                     4 points
+  decided by                 search
 ```
 
 Below that boundary the formula *is* the price over `U(T)`, and the theorem is
 sharp: `16` breaks, `16` triples, no break without a triple and no triple
 without a break. Divisibility by `30` is necessary and not sufficient -- `840`
 holds `12` and `20` but not `30`, so it is exact.
+
+#### The law behind the boundary, and why the universe decides it
+
+The frontier is a property of the **universe**, and the two answers are eighteen
+times apart. Over every divisor, a period is mispriced exactly when one of its
+divisors has a **drop-one block**: for `N` let `B(N) = {N // p}` over the
+distinct primes `p` of `N`, an antichain by construction whose least common
+multiple is `N`. Then
+
+    saving(N) = sum(b // 2 for b in B(N)) - lcm(B(N)) // 2
+
+and the closed form is wrong on `D(T)` **if and only if some `N` dividing `T`
+has `saving(N) > 0`**. That quantity is about
+`(N / 2) * (sum(1 / p) - 1)` over the primes of `N`, so the criterion is a sum
+of reciprocal primes -- and the floors are not noise: `N = 30` has reciprocal
+sum `31 / 30`, above one, and still saves nothing, because `6 + 10 + 15 = 31`
+buys the same thirty points as the single grid `30`. Checked against the
+exhaustive block search on all 1000 even periods to 2000: **0 disagreements**,
+same witness and same saving, in `O(tau(T))` instead of a search.
+
+```
+$ exact-lattice-quantiles frontier --universe all --max-period 2000
+even periods 2..2000 over D(T): 82 of 1000 mispriced, first at T = 60
+  witness                    (12, 20, 30)
+  closed form                31 points
+  one grid 60                30 points
+  saving                     1 points
+  decided by                 blocks
+
+$ exact-lattice-quantiles blocks --limit 250
+divisibility-minimal blocks up to 250: 4
+      60  saves   1  (12, 20, 30)
+      90  saves   1  (18, 30, 45)
+     150  saves   2  (30, 50, 75)
+     210  saves  18  (30, 42, 70, 105)
+```
+
+| universe | frontier | decided by | witness |
+|---|---|---|---|
+| `D(T)`, every divisor | **60** | `saving(N) > 0` for some divisor, `O(tau(T))` | `{12, 20, 30}` → `31` / `30` |
+| `U(T)`, reduced carriers | **1080** | search; the law is necessary, not sufficient | `{54, 90, 135}` → `139` / `135` |
+
+Two readings of one theory. Divisibility by `60` is sufficient over `D(T)` and
+49 of the 82 breaks to 2000 are no multiple of `60`, so the rule reads the
+divisors and not the multiples. Reducing to carriers buys **18x** of delay and
+destroys the sufficiency: `840` keeps `12` and `20` and loses `30`, and of the
+16 breaks in `U(T)` below 8000, nine have witnesses that are no divisor's whole
+block. A frontier quoted without its universe is a number about the wrong set.
+
+#### Why the price is answerable where the table is not
+
+`price_exact` runs its DP over the **maximal elements of the request**, not over
+the universe: a grid that covers `b` covers every divisor of `b` for free, so a
+request costs exactly what its maximals cost, and the state space is `2^k` with
+`k` the number of maximals. Verified against the `2^|U|` table on all 8 388 607
+requests over the divisors of 360, with 0 discrepancies -- and it is what makes
+`price_exact(1080, (54, 90, 135))` return `135` in under a millisecond where the
+full table is `2^23` masks, and `2520` is `2^32`.
 
 So the library never prices with the formula: `price_exact` is a subset DP over
 the coverage masks, and `price_form_census` publishes how often the shortcut
