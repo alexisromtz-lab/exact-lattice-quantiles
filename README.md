@@ -205,7 +205,7 @@ even periods 2..8000 over U(T): 16 of 4000 mispriced, first at T = 1080
   closed form                139 points
   one grid 270               135 points
   saving                     4 points
-  decided by                 search
+  decided by                 carrier blocks
 ```
 
 Below that boundary the formula *is* the price over `U(T)`, and the theorem is
@@ -216,21 +216,31 @@ holds `12` and `20` but not `30`, so it is exact.
 #### The law behind the boundary, and why the universe decides it
 
 The frontier is a property of the **universe**, and the two answers are eighteen
-times apart. Over every divisor, a period is mispriced exactly when one of its
-divisors has a **drop-one block**: for `N` let `B(N) = {N // p}` over the
-distinct primes `p` of `N`, an antichain by construction whose least common
-multiple is `N`. Then
+times apart. One law decides both, and the only thing that changes between them
+is a filter.
 
-    saving(N) = sum(b // 2 for b in B(N)) - lcm(B(N)) // 2
+For `N` let `B(N) = {N // p}` over the distinct primes `p` of `N`: an antichain
+by construction, whose least common multiple is `N` when every prime power of
+`N` survives the division. Keep from it only the elements the universe actually
+carries, `K(N, V) = B(N) ∩ V`, and price what survives by the same integer rule:
 
-and the closed form is wrong on `D(T)` **if and only if some `N` dividing `T`
-has `saving(N) > 0`**. That quantity is about
-`(N / 2) * (sum(1 / p) - 1)` over the primes of `N`, so the criterion is a sum
-of reciprocal primes -- and the floors are not noise: `N = 30` has reciprocal
-sum `31 / 30`, above one, and still saves nothing, because `6 + 10 + 15 = 31`
-buys the same thirty points as the single grid `30`. Checked against the
-exhaustive block search on all 1000 even periods to 2000: **0 disagreements**,
-same witness and same saving, in `O(tau(T))` instead of a search.
+    saving(N, V) = sum(b // 2 for b in K(N, V)) - lcm(K(N, V)) // 2
+
+Then the closed form is wrong on the universe `V(T)` **if and only if some `N`
+dividing `T` has `saving(N, V) > 0`**. Over `D(T)` the filter is the identity
+and the criterion is a plain divisibility statement; over `U(T)` it is the same
+statement after the carriers have had their say.
+
+That quantity is about `(N / 2) * (sum(1 / p) - 1)` over the primes of `N`, so
+the criterion is a sum of reciprocal primes -- and the floors are not noise:
+`N = 30` has reciprocal sum `31 / 30`, above one, and still saves nothing,
+because `6 + 10 + 15 = 31` buys the same thirty points as the single grid `30`.
+
+Measured against the exhaustive block search: **0 disagreements** on every even
+period to 2000 in *both* universes, and on every even period to 20000 in `U(T)`
+-- and not only on break against no-break, the law names the same saving, point
+for point (`52` breaks to 20000, all of them equal in value). It runs in
+`O(tau(T)^2)` where the search needs the antichains.
 
 ```
 $ exact-lattice-quantiles frontier --universe all --max-period 2000
@@ -239,7 +249,7 @@ even periods 2..2000 over D(T): 82 of 1000 mispriced, first at T = 60
   closed form                31 points
   one grid 60                30 points
   saving                     1 points
-  decided by                 blocks
+  decided by                 carrier blocks
 
 $ exact-lattice-quantiles blocks --limit 250
 divisibility-minimal blocks up to 250: 4
@@ -249,17 +259,27 @@ divisibility-minimal blocks up to 250: 4
      210  saves  18  (30, 42, 70, 105)
 ```
 
-| universe | frontier | decided by | witness |
+| universe | frontier | breaks to 8000 | witness |
 |---|---|---|---|
-| `D(T)`, every divisor | **60** | `saving(N) > 0` for some divisor, `O(tau(T))` | `{12, 20, 30}` → `31` / `30` |
-| `U(T)`, reduced carriers | **1080** | search; the law is necessary, not sufficient | `{54, 90, 135}` → `139` / `135` |
+| `D(T)`, every divisor | **60** | 336 | `{12, 20, 30}` → `31` / `30` |
+| `U(T)`, reduced carriers | **1080** | 16 | `{54, 90, 135}` → `139` / `135` |
 
-Two readings of one theory. Divisibility by `60` is sufficient over `D(T)` and
-49 of the 82 breaks to 2000 are no multiple of `60`, so the rule reads the
-divisors and not the multiples. Reducing to carriers buys **18x** of delay and
-destroys the sufficiency: `840` keeps `12` and `20` and loses `30`, and of the
-16 breaks in `U(T)` below 8000, nine have witnesses that are no divisor's whole
-block. A frontier quoted without its universe is a number about the wrong set.
+Reducing to carriers buys **18x** of delay and changes the witness, not the law.
+`U(2520)` keeps `84`, `140` and `210` and loses `60`, so the block of `420`
+survives there with three elements: `434` apart against `420` as one grid, a
+saving of `7`. `U(840)` keeps `12` and `20` and loses `30`: two elements, and a
+pair of incomparable grids never saves -- which is why `840` is a multiple of
+`60` and does not break. A frontier quoted without its universe is a number
+about the wrong set.
+
+**What the law is not.** It is a statement about the *maximum*, not about every
+saving set. In `D(1050)` the antichain `{42, 150, 350, 525}` saves `8` points
+and `42` is no `1050 / p`: its reciprocals are `1/2 + 1/3 + 1/7 + 1/25 > 1`, so
+the drop-one shape is not the only way to save. The maximum still comes from the
+block of `1050`, worth `92`. That "the maximum is a block" half is measured --
+zero exceptions on the 125 breaks to 3000, witness included -- and not proved;
+`tests/test_carrier_law.py` pins both halves so a counterexample arrives as a
+failing test instead of a rumour.
 
 #### Why the price is answerable where the table is not
 
@@ -452,8 +472,8 @@ returned or stored.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 135 tests
-exact-lattice-quantiles --self-test           # 24 checks, RC 0
+python -m unittest discover -s tests -t .     # 145 tests
+exact-lattice-quantiles --self-test           # 29 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,

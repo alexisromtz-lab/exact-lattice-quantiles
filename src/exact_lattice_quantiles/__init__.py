@@ -44,14 +44,15 @@ from .coverage import (DesignLaw, DriftLaw, best_probes, design_law,
 from .lattice import (carriers, cell_intervals, cell_width, cell_widths, grids,
                       seats, universe, universe_from_factorization, widths)
 from .pricing import (PriceFormCensus, best_block_saving, block_catalogue,
-                      block_of, block_saving, exactness_frontier,
+                      block_of, block_saving, carrier_block_of,
+                      carrier_block_saving, exactness_frontier,
                       frontier_by_blocks, maximal_divisors, price_exact,
                       price_form_census, price_form_sweep,
                       price_one_per_maximal)
 from .solve import (OK, PROBES_INSUFFICIENT, InfeasibleWithinBudget, Schedule,
                     ladder, solve_lattice_schedule)
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 __all__ = [
     "Ceiling",
@@ -66,6 +67,8 @@ __all__ = [
     "block_catalogue",
     "block_of",
     "block_saving",
+    "carrier_block_of",
+    "carrier_block_saving",
     "frontier_by_blocks",
     "best_probes",
     "carriers",

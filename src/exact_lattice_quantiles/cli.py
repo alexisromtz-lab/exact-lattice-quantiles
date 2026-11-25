@@ -24,6 +24,7 @@ from .coverage import (coverage_census, design_law, drift_law, drift_radius,
                        drift_tolerance, witness_margin)
 from .lattice import universe
 from .pricing import (block_catalogue, block_of, block_saving,
+                      carrier_block_of, carrier_block_saving,
                       exactness_frontier, price_exact,
                       price_form_census, price_form_sweep)
 from .solve import InfeasibleWithinBudget, ladder, solve_lattice_schedule
@@ -357,6 +358,16 @@ def _self_test() -> int:
           exactness_frontier(2000, reduced=False)["period"], 60)
     check("every carrier universe misprices first at 1080",
           exactness_frontier(2000)["period"], 1080)
+    check("the universe filters the block of 420 down to three elements",
+          carrier_block_of(420, universe(2520))[0], (84, 140, 210))
+    check("and that filtered block still saves 7",
+          carrier_block_saving(420, universe(2520)), 7)
+    check("the block of 60 in U(840) keeps only a pair",
+          carrier_block_of(60, universe(840))[0], (12, 20))
+    check("and that pair costs 14 points more than the grid it replaces",
+          carrier_block_saving(60, universe(840)), -14)
+    check("the carrier universe keeps its first witness",
+          exactness_frontier(2000)["witness"], (54, 90, 135))
     check("the price at 1080 is 135, not 139",
           price_exact(1080, (54, 90, 135)), 135)
     try:
