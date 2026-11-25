@@ -356,9 +356,57 @@ is the block's saving period by period, witness included --
 [tests/test_block_dominance.py](tests/test_block_dominance.py) fails the day an
 antichain saves where no block does, and
 [tests/test_strong_lemma_frontier.py](tests/test_strong_lemma_frontier.py)
-pins the day the ranking dies. What neither says is *why* the sign reading
-holds. The honest statement is the one in the code: `antichain_saving_ceiling`
-is a search, and a proof would replace it with a one-line inequality.
+pins the day the ranking dies. The sign reading is no longer a search either:
+`sign-theorem` decides it from the prime factorisation alone.
+
+#### The sign reading is an inequality, and it is the one-line kind
+
+Write `e1(P) = sum(1/p)` over the primes of `L`. Subtracting the single grid
+`L // 2` from both sides, an antichain `A` saving `S(A)` satisfies
+
+    S(A) = (sum_A a - #odd(A)) / 2 - (L - [L odd]) / 2,
+
+so the whole question is how heavy an antichain can be. Induction on the largest
+prime `q` of `L` answers it. Split `A` by `v_q`: dividing a member by `q^k`
+preserves divisibility, so each slice is again an antichain, now `q`-smooth
+except for the exact power `q^k` charged to it, and the induction hypothesis
+applies to the slice without it. The geometric series closes as
+
+    sum_A 1/a  <=  e1(P),   every antichain of proper divisors with lcm = L,
+
+and the block `{L // p}` meets it with equality -- the lemma is sharp, not
+slack. Therefore `sum_A a <= L * e1`, hence
+
+> **`e1(P) <= 1` implies `S(A) <= 1/2` for every antichain, and savings are
+> integers, so `S(A) <= 0`: no antichain saves a point where no block does.**
+
+The proof never looks at the universe, only at `lcm(A)`, so it transfers to any
+set of grids a schedule may use. What it does not cover is the band `e1 > 1`
+with the block still saving nothing, and there the block's own saving is
+`(L * e1 - L - (#odd_B - [L odd])) / 2` with `#odd_B <= 1`, so the band is
+exactly `L * (e1 - 1) = 1` together with `v2(L) = 1`. For squarefree `L` that
+is `sum(1/p) - prod(1/p) = 1` -- Giuga's equation -- and the census below finds
+its only three members under `2000`:
+
+```
+$ exact-lattice-quantiles sign-theorem
+sign lemma: if no block saves, no antichain saves
+  periods 2..2000                   1999  censused
+  sum 1/p at most one               1914  proved: no antichain saves any point
+    the block is the heaviest       1581  of those, the lemma is sharp
+  the block saves already             82  nothing left to prove
+  band, sum 1/p above one              3  measured only, the proof does not reach
+        30  sum 1/p = 31/30      period*(sum-1) = 1   block   0  ceiling 0  Giuga equation
+       858  sum 1/p = 859/858    period*(sum-1) = 1   block   0  ceiling 0  Giuga equation
+      1722  sum 1/p = 1723/1722  period*(sum-1) = 1   block   0  ceiling 0  Giuga equation
+  verdict  no antichain saves where the theorem forbids it
+```
+
+`1581` of the `1914` proved periods are *sharp*: the heaviest antichain weighs
+exactly the block, so the bound is tight and a proof cannot be pushed further
+without extra structure. In `858` the heaviest is `429 + 286 + 78 + 66 = 859`
+against `L * e1 = 859`, and the odd-count slack absorbs the extra point -- the
+sharpness is what keeps the band from being empty by accident.
 
 The reciprocal sum is not the criterion either. `N = 30` has `1/2 + 1/3 + 1/5 >
 1` and saves nothing, because `7 + 5 + 3 = 15` buys exactly the fifteen points
@@ -586,8 +634,8 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 184 tests
-exact-lattice-quantiles --self-test           # 38 checks, RC 0
+python -m unittest discover -s tests -t .     # 221 tests
+exact-lattice-quantiles --self-test           # 51 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,

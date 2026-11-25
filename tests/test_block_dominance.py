@@ -18,8 +18,11 @@ Read as a ranking -- the block saves *most* among the antichains it shares a
 least common multiple with -- the lemma is false, and ``1049`` is the prime
 that says so: on the primorial of the first 176 primes the pair antichain wins
 (see ``test_strong_lemma_frontier``).  What the law uses is the weaker **sign**
-reading, that no antichain saves where no block does, and that one is measured
-here, not proved.
+reading, that no antichain saves where no block does, and that one is proved in
+``pricing.sign_theorem_census`` from the prime factorisation alone: ``sum 1/p
+<= 1`` forces every antichain to weigh at most ``L * sum 1/p``, which leaves the
+saving at ``<= 1/2`` and integrality finishes. The census below is therefore
+the check on the implementation, not the evidence for the claim.
 
 What the tests pin is that it is checked rather than assumed:
 ``block_dominance_census`` recomputes the ceiling for every least common

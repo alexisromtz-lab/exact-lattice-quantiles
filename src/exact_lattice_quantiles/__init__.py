@@ -51,12 +51,14 @@ from .pricing import (PriceFormCensus, antichain_saving_ceiling,
                       maximal_divisors, pair_antichain_of,
                       pair_antichain_saving, price_exact, price_form_census,
                       price_form_sweep, price_one_per_maximal,
-                      strong_lemma_frontier)
+                      reciprocal_prime_sum, sign_regime, sign_theorem_census,
+                      strong_lemma_frontier, two_adic,
+                      worst_antichain_weight)
 from .solve import (OK, PROBES_INSUFFICIENT, UNDERCOVERED,
                     InfeasibleWithinBudget, Schedule, ladder,
                     solve_lattice_schedule)
 
-__version__ = "0.9.1"
+__version__ = "0.10.0"
 
 __all__ = [
     "Ceiling",
@@ -64,7 +66,12 @@ __all__ = [
     "block_dominance_census",
     "pair_antichain_of",
     "pair_antichain_saving",
+    "reciprocal_prime_sum",
+    "sign_regime",
+    "sign_theorem_census",
     "strong_lemma_frontier",
+    "two_adic",
+    "worst_antichain_weight",
     "InfeasibleAboveInstanceCeiling",
     "OddPeriodUnsupported",
     "InfeasibleWithinBudget",
