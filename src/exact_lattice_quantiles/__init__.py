@@ -53,7 +53,7 @@ from .pricing import (PriceFormCensus, antichain_saving_ceiling,
 from .solve import (OK, PROBES_INSUFFICIENT, InfeasibleWithinBudget, Schedule,
                     ladder, solve_lattice_schedule)
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 
 __all__ = [
     "Ceiling",

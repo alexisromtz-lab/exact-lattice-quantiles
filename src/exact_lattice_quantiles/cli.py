@@ -8,6 +8,8 @@ Exit codes are part of the contract:
        the number -- or an ``acta`` anchor does not reproduce
 ``2``  the margin requested exists but costs more points than the budget
 ``3``  the request itself is malformed
+``4``  the acta could not be measured (no git, no such table, not exact): the
+       boundary is ``NO_MEDIDO``, and ``NO_MEDIDO`` never degrades to ``0``
 """
 
 from __future__ import annotations
@@ -19,7 +21,9 @@ from fractions import Fraction
 
 from .ceiling import (InfeasibleAboveInstanceCeiling, ceiling_by_product,
                       ceiling_by_scan, ceiling_census, instance_ceiling)
-from .acta import ManifestError, render, shipped_manifest, verify_file
+from .acta import (ManifestError, SourceError, inspect_source, load_manifest,
+                   parse_tables, render, shipped_manifest, verify_file,
+                   verify_manifest)
 from .coverage import (coverage_census, design_law, drift_law, drift_radius,
                        drift_tolerance, witness_margin)
 from .lattice import universe
@@ -34,6 +38,7 @@ RC_OK = 0
 RC_ABOVE_CEILING = 1
 RC_OVER_BUDGET = 2
 RC_BAD_REQUEST = 3
+RC_NO_MEDIDO = 4
 
 
 def _fraction(text: str) -> Fraction:
@@ -285,29 +290,60 @@ def _print_dominance(limit: int, as_json: bool) -> int:
     return RC_OK
 
 
-def _print_verify_acta(manifest: str, as_json: bool) -> int:
+def _print_verify_acta(manifest: str, as_json: bool, source: str = "") -> int:
     """Recompute the anchors of a manifest: the boundary is a gate, not a memory."""
     try:
-        checks = verify_file(manifest)
+        data = load_manifest(manifest)
+        checks = verify_manifest(data)
     except ManifestError as exc:
         print(f"BAD_REQUEST: {exc}", file=sys.stderr)
         return RC_BAD_REQUEST
+    report = None
+    if source:
+        try:
+            report = inspect_source(source, data)
+        except SourceError as exc:
+            print(f"NO_MEDIDO: {exc}", file=sys.stderr)
+            return RC_NO_MEDIDO
+        checks = checks + list(report.checks)
     divergent = [check for check in checks if not check.ok]
     anchors = len({check.anchor for check in checks})
     if as_json:
-        print(json.dumps({
+        payload = {
             "manifest": str(manifest),
             "anchors": anchors,
             "checks": len(checks),
             "divergent": len(divergent),
             "results": [{"anchor": c.anchor, "kind": c.kind, "field": c.field,
                          "manifest": render(c.expected),
-                         "package": render(c.measured), "ok": c.ok}
+                         "subject": c.subject,
+                         c.subject: render(c.measured), "ok": c.ok}
                         for c in checks],
-        }, indent=2, sort_keys=True))
+        }
+        if report is not None:
+            payload["source"] = {
+                "path": report.path, "blob": report.blob, "lines": report.lines,
+                "declared_blob": report.declared_blob,
+                "declared_lines": report.declared_lines,
+                "moved": report.moved, "tables": list(report.tables),
+                "unanchored": list(report.unanchored),
+            }
+        print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         for check in checks:
             print(check)
+        if report is not None:
+            verdict = "MOVIDO" if report.moved else "IDENTICO"
+            print(f"source {report.path}")
+            print(f"  blob   {report.blob}  manifest {report.declared_blob}  {verdict}")
+            print(f"  lines  {report.lines}  manifest {report.declared_lines}")
+            print(f"  tables {', '.join(report.tables)} read by AST, never imported")
+            if report.moved and not report.divergent:
+                print("  the numbers hold; it is the citation of the source that is stale")
+            if report.unanchored:
+                shown = ", ".join(report.unanchored[:6])
+                more = "" if len(report.unanchored) <= 6 else f" (+{len(report.unanchored) - 6} more)"
+                print(f"  sin ancla: {len(report.unanchored)} cells no anchor declares: {shown}{more}")
         print(f"{len(checks)} checks over {anchors} anchors:"
               f" {len(checks) - len(divergent)} reproduce, {len(divergent)} divergent")
     return RC_OK if not divergent else RC_ABOVE_CEILING
@@ -402,6 +438,21 @@ def _self_test() -> int:
         divergent = [str(c) for c in anchors if not c.ok]
         check(f"the shipped manifest reproduces its {len(anchors)} checks",
               divergent or "all reproduce", "all reproduce")
+    acta = "TECHOS = {2: F(1, 2)}\n"
+    check("a table is read without importing the acta",
+          parse_tables(acta, ["TECHOS"]), {"TECHOS": {2: Fraction(1, 2)}})
+    try:
+        parse_tables("TECHOS = {2: 0.5}\n", ["TECHOS"])
+    except SourceError:
+        check("a float in a quoted table is refused", "SourceError", "SourceError")
+    else:
+        check("a float in a quoted table is refused", "accepted", "SourceError")
+    try:
+        parse_tables("TECHOS = dict(TECHOS)\n", ["TECHOS"])
+    except SourceError:
+        check("a table is never computed at read time", "SourceError", "SourceError")
+    else:
+        check("a table is never computed at read time", "accepted", "SourceError")
     return RC_OK if ok else RC_ABOVE_CEILING
 
 
@@ -494,6 +545,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="recompute an acta's anchors from a manifest, naming every field"
              " that diverges")
     p_verify.add_argument("manifest", help="path to the manifest JSON")
+    p_verify.add_argument("--source", default="",
+                          help="the live acta: measure its blob, its lines and the"
+                               " tables the manifest cites (read by AST, never imported)")
     return parser
 
 
@@ -534,7 +588,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "dominance":
             return _print_dominance(args.max_period, args.json)
         if args.command == "verify-acta":
-            return _print_verify_acta(args.manifest, args.json)
+            return _print_verify_acta(args.manifest, args.json, args.source)
     except ValueError as exc:
         print(f"BAD_REQUEST: {exc}", file=sys.stderr)
         return RC_BAD_REQUEST

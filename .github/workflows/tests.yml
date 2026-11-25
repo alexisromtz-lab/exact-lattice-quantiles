@@ -60,3 +60,6 @@ jobs:
           check 2 exact-lattice-quantiles solve 180 --max-cost 40 --probes 4
           check 3 exact-lattice-quantiles bogus
           check 3 exact-lattice-quantiles verify-acta /no/such/manifest.json
+          manifest=$(python -c "from exact_lattice_quantiles.acta import shipped_manifest; print(shipped_manifest())")
+          printf 'TECHOS_P54 = {180: 0.3333333}\nBAJAN_P54 = {}\nFAMILIA_P54 = {}\n' > acta_flotante.py
+          check 4 exact-lattice-quantiles verify-acta "$manifest" --source acta_flotante.py

@@ -4,8 +4,13 @@
     "path": "sim/acta_margen_secciones_20261125.py",
     "blob": "a6975e65920af7f5c66dc238e5938aeba10c11e4",
     "lines": 1606,
-    "tables": "TECHOS_P54 (l. 227), BAJAN_P54 (l. 236), FAMILIA_P54 (l. 240)",
-    "note": "The blob is a git object id, so the tables can be checked byte for byte wherever the acta lives."
+    "tables": [
+      {"name": "TECHOS_P54", "line": 227, "columns": ["margin"]},
+      {"name": "BAJAN_P54", "line": 236, "columns": ["margin"]},
+      {"name": "FAMILIA_P54", "line": 240,
+       "columns": ["grids", "universe_size", "margin", "critical_divisor", "cost_cover", "cost_ceiling"]}
+    ],
+    "note": "The blob is a git object id, so the tables can be checked byte for byte wherever the acta lives. The columns are read by AST, never by importing the acta."
   },
   "not_reproducible": [
     "PASOS_P55: per-period step tables produced by the acta's own sweep and not exposed by this package. Recorded here as a known blind spot rather than silently dropped."
