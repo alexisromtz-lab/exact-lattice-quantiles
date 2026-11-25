@@ -22,9 +22,12 @@ does not belong here.
 5. **Two budgets are never merged.** Grid cost and shared sections are separate
    inputs; a design that cannot be served is reported
    (`PROBES_INSUFFICIENT`), never silently downgraded to a weaker margin.
-6. **Say which margin you mean.** `design_margin`, `witness_margin` and
-   `robust_margin` are different quantities; `robust_margin` is optimistic and
-   must not be presented as a guarantee.
+6. **Say which margin you mean.** `design_margin`, `witness_margin`,
+   `robust_margin` (== `drift_radius`) and `drift_tolerance` are four
+   quantities. `robust_margin` is exact for *coverage* and is not a guarantee:
+   it can exceed the witness margin because drift may push a section into a
+   block it never captured. The margin is what `drift_tolerance` protects, and
+   it is protected under zero drift only.
 
 ## Commands
 
@@ -32,6 +35,7 @@ does not belong here.
 python -m unittest discover -s tests -t .        # full suite
 PYTHONPATH=src python -m exact_lattice_quantiles.cli --self-test
 PYTHONPATH=src python -m exact_lattice_quantiles.cli ladder 180
+PYTHONPATH=src python -m exact_lattice_quantiles.cli drift 180 --max-cost 64 --probes 4
 ```
 
 The suite runs in about half a minute; the slow tests are the ones that

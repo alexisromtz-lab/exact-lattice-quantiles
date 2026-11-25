@@ -15,7 +15,9 @@ Two currencies and one dual:
   price.  That is a bound; a search is a sample.
 
 The robust reading -- one common drift ``delta`` applied to all sections at
-once -- lives in :func:`drift_radius`.
+once -- lives in :func:`drift_radius`, which is exact for **coverage**, and in
+:func:`drift_tolerance`, which is the same question asked of the **margin**
+and answers with a strictly smaller number.
 
 **One currency.**  Every margin here is the P51 currency: the measure of the
 block that a section holds, which is ``2 * min(q - L, R - q)`` when a section
@@ -170,33 +172,83 @@ def drift_radius(G: tuple[int, ...], Q: tuple[Fraction, ...],
     """Radius of a **common** drift ``delta`` the design still absorbs.
 
     A shift ``q -> q + delta`` moves every section at once, so ``d`` survives
-    if some pair ``(M, q)`` resists ``+delta`` and some pair resists
-    ``-delta``: the radius is ``min(max(q - L), max(R - q))`` over the pairs
-    that capture ``d``.
+    when some pair ``(M, q)`` ends up holding it: the admissible ``delta`` are
+    the spans ``(L - q, R - q)``, and the radius is how far their union reaches
+    from zero on both sides.
+
+    Two corrections to the obvious version, both measured.  Every span is a
+    candidate even when ``q`` starts outside the block -- a drift can push a
+    section *into* ``d``'s block, and keeping only the pairs that already
+    capture ``d`` under-reported the radius (``1/6`` against the exact
+    ``37/210`` for ``(2, 3, 4, 6, 9, 12, 15, 20, 36, 45, 180)`` at ``k = 4``).
+    And the reach is the component grown through overlaps, not a maximum:
+    ``min(max(q - L), max(R - q))`` agrees only while every span straddles
+    zero, and it stops agreeing as soon as one of them does not.
 
     Read the comparison with :func:`witness_margin` carefully, because it goes
-    the way one expects least: for each ``d`` the radius is at least the
-    witness slack, since taking a maximum over pairs and then a minimum can
-    only gain.  So this is an *optimistic* bound, not a conservative one -- it
-    allows the downward shift and the upward shift to be absorbed by two
-    different pairs, and it does not check that the sections keep covering ``d``
-    in between.  It measures what the sections were chosen to do; the witness
-    margin measures what they actually hold in the worst single direction.
+    the way one expects least: the radius is at least the witness slack.  That
+    is not optimism -- capture is a weaker condition than slack, and keeping
+    the **margin** under drift is :func:`drift_tolerance`.
+    """
+    return drift_tolerance(G, Q, U, Fraction(0), doubled)
+
+
+def _reach_from_zero(spans: list[tuple[Fraction, Fraction]]) -> Fraction:
+    """Largest ``r`` with ``(-r, r)`` inside the union of the open ``spans``.
+
+    Only a span that straddles zero survives both drift directions: one that
+    ends at zero covers no ``delta > 0``, one that starts at zero covers no
+    ``delta < 0``.  From that seed the component grows through overlaps, which
+    is why a chain of two spans can reach further than either one alone --
+    the reason the reach is computed and not taken as a maximum.
+    """
+    live = [(a, b) for a, b in spans if a < b]
+    seed = [(a, b) for a, b in live if a < 0 < b]
+    if not seed:
+        return Fraction(0)
+    lo = min(a for a, _ in seed)
+    hi = max(b for _, b in seed)
+    grew = True
+    while grew:
+        grew = False
+        for a, b in live:
+            if a < hi < b:
+                hi, grew = b, True
+            if lo < b and a < lo:
+                lo, grew = a, True
+    return min(-lo, hi)
+
+
+def drift_tolerance(G: tuple[int, ...], Q: tuple[Fraction, ...],
+                    U: tuple[int, ...], margin: Fraction = Fraction(0),
+                    doubled: bool = True) -> dict[int, Fraction]:
+    """Common drift every divisor absorbs **while still holding** ``margin``.
+
+    :func:`drift_radius` answers a weaker question: it asks only that ``d``
+    stays inside *some* block, so it can promise a drift while the margin
+    collapses.  Shrinking every block by half the margin turns the same union
+    into the condition that the margin itself survives, and then the drift has
+    a price -- measured, not assumed: at the witness margin the price is zero
+    in every design checked, because the binding divisor sits exactly on its
+    edge.  A margin is a knife edge; the tolerance is what it costs to leave it.
+
+    ``margin`` and the result are in the same currency as
+    :func:`witness_margin`; ``drift_tolerance(..., 0)`` equals
+    :func:`drift_radius`.
     """
     scale = 2 if doubled else 1
+    half = Fraction(margin) / 2
     out: dict[int, Fraction] = {}
     for d in U:
-        down = up = Fraction(0)
+        spans: list[tuple[Fraction, Fraction]] = []
         for M in G:
             block = _interval_map(M).get(d)
             if block is None:
                 continue
             L, R = block
             for q in Q:
-                if L < q <= R:
-                    down = max(down, q - L)
-                    up = max(up, R - q)
-        out[d] = min(down, up) * scale
+                spans.append((L - q + half, R - q - half))
+        out[d] = _reach_from_zero(spans) * scale
     return out
 
 

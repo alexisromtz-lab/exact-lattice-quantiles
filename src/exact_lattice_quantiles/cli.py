@@ -18,7 +18,8 @@ from fractions import Fraction
 
 from .ceiling import (InfeasibleAboveInstanceCeiling, ceiling_by_product,
                       ceiling_by_scan, ceiling_census, instance_ceiling)
-from .coverage import coverage_census
+from .coverage import coverage_census, drift_radius, drift_tolerance, witness_margin
+from .lattice import universe
 from .pricing import price_form_census, price_form_sweep
 from .solve import InfeasibleWithinBudget, ladder, solve_lattice_schedule
 
@@ -104,6 +105,49 @@ def _print_solve(args: argparse.Namespace) -> int:
     print(f"ceiling          {schedule.ceiling.margin} "
           f"(critical divisor {schedule.ceiling.critical_divisor})")
     print(f"verdict          {schedule.verdict}")
+    return RC_OK
+
+
+def _print_drift(args: argparse.Namespace) -> int:
+    """The trade-off the witness margin hides: slack is bought with tolerance."""
+    try:
+        schedule = solve_lattice_schedule(
+            args.period, args.max_cost, args.probes,
+            Fraction(0) if args.min_margin is None else args.min_margin)
+    except InfeasibleAboveInstanceCeiling as exc:
+        print(f"INFEASIBLE_ABOVE_INSTANCE_CEILING: {exc}", file=sys.stderr)
+        return RC_ABOVE_CEILING
+    except InfeasibleWithinBudget as exc:
+        print(f"OVER_BUDGET: {exc}", file=sys.stderr)
+        return RC_OVER_BUDGET
+    U = universe(schedule.period)
+    Q = schedule.probes
+    curve = []
+    for share in (Fraction(1), Fraction(3, 4), Fraction(1, 2), Fraction(1, 4), Fraction(0)):
+        kept = schedule.witness_margin * share
+        tol = min(drift_tolerance(schedule.design, Q, U, kept).values()) if Q else Fraction(0)
+        curve.append((kept, tol))
+    coverage = min(drift_radius(schedule.design, Q, U).values()) if Q else Fraction(0)
+    if args.json:
+        print(json.dumps({
+            "period": schedule.period,
+            "design": list(schedule.design),
+            "cost": schedule.cost,
+            "probes": [str(q) for q in Q],
+            "witness_margin": str(schedule.witness_margin),
+            "coverage_drift": str(coverage),
+            "kept_margin_to_drift": [[str(v), str(t)] for v, t in curve],
+        }, indent=2, sort_keys=True))
+        return RC_OK
+    print(f"period           {schedule.period}")
+    print(f"design           {list(schedule.design)}")
+    print(f"cost             {schedule.cost} points (budget {schedule.max_cost})")
+    print(f"sections ({len(Q)})  {[str(q) for q in Q]}")
+    print(f"witness margin   {schedule.witness_margin}")
+    print(f"coverage drift   {coverage}  (captured, margin not kept)")
+    print("margin kept      drift tolerated")
+    for kept, tol in curve:
+        print(f"  {str(kept):<15} {tol}")
     return RC_OK
 
 
@@ -200,6 +244,13 @@ def _self_test() -> int:
     check("cheapest design at 1/3", (s.cost, s.design),
           (64, (4, 6, 10, 12, 15, 18, 20, 45)))
     check("1/3 realised with 4 probes", s.witness_margin, Fraction(1, 3))
+    U = universe(180)
+    G, Q = s.design, s.probes
+    check("no drift is exactly the coverage radius",
+          min(drift_tolerance(G, Q, U, Fraction(0)).values()),
+          min(drift_radius(G, Q, U).values()))
+    check("the witness margin survives no drift at all",
+          min(drift_tolerance(G, Q, U, s.witness_margin).values()), Fraction(0))
     return RC_OK if ok else RC_ABOVE_CEILING
 
 
@@ -244,6 +295,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_solve.add_argument("--probes", type=int, required=True)
     p_solve.add_argument("--min-margin", type=_fraction, default=None)
 
+    p_drift = sub.add_parser(
+        "drift", help="margin kept against common drift, for one schedule")
+    p_drift.add_argument("period", type=int)
+    p_drift.add_argument("--max-cost", type=int, required=True)
+    p_drift.add_argument("--probes", type=int, required=True)
+    p_drift.add_argument("--min-margin", type=_fraction, default=None)
+
     p_ladder = sub.add_parser("ladder", help="cost -> best margin for one period")
     p_ladder.add_argument("period", type=int)
 
@@ -281,6 +339,8 @@ def main(argv: list[str] | None = None) -> int:
             return _print_ceiling(args.period, args.json)
         if args.command == "solve":
             return _print_solve(args)
+        if args.command == "drift":
+            return _print_drift(args)
         if args.command == "ladder":
             return _print_ladder(args.period, args.json)
         if args.command == "census":

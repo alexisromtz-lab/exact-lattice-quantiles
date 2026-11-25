@@ -59,12 +59,12 @@ class Schedule:
 
     ``design_margin`` is the P51 currency: each divisor read in its best grid.
     ``witness_margin`` is what the ``k`` chosen sections actually hold, with
-    each divisor leaning on its own pair.  ``robust_margin`` is the common
-    drift ``delta`` the same sections absorb, and it is *at least* the witness
-    margin -- that measure lets two different pairs take the two directions, so
-    it flatters the design rather than protecting it.  Quote the witness
-    margin when a schedule is being promised; quote the drift radius when the
-    question is how much clock error the sections were designed around.
+    each divisor leaning on its own pair.  ``robust_margin`` is the exact
+    radius of common drift the sections still *cover* -- a weaker question than
+    the margin, because drift may push a section into a block it never captured.
+    Quote the witness margin when a schedule is being promised; quote
+    ``drift_tolerance`` when the question is how much common clock error the
+    sections keep that margin under.
     """
 
     period: int

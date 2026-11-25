@@ -59,7 +59,7 @@ $ exact-lattice-quantiles designs 180
 $ exact-lattice-quantiles census 2 400
 ```
 
-## Four claims, each reproducible by a command
+## Five claims, each reproducible by a command
 
 ### 1. The ceiling belongs to the instance
 
@@ -193,6 +193,63 @@ agrees. Restricting the universe to `U(T)` is what makes the shortcut look
 right, and that restriction is a modelling decision, not a measurement --
 `price_form_census(period, reduced=False)` is the row that shows it.
 
+### 5. A margin survives exactly zero drift
+
+The witness margin is a knife edge: the divisor that fixes it sits on the edge
+of its block, so **any** common drift loses it. That is a property of the
+optimum, not a slack in the implementation — the sections are placed to just
+seat every divisor, and the last one seated is the one that leaves no room.
+
+`drift` prints both halves of the answer. Two quantities, not one:
+
+- **coverage drift** — the largest common `delta` the sections still *cover*
+  every divisor under. A section may be pushed into a block it never captured,
+  so this is the weaker question.
+- **margin kept** — the largest common `delta` the sections still hold the
+  witness margin under. This is the guarantee.
+
+```
+$ exact-lattice-quantiles drift 180 --max-cost 64 --probes 4
+period           180
+design           [12, 18, 20, 45]
+cost             47 points (budget 64)
+sections (4)  ['10/33', '94/165', '23/33', '32/33']
+witness margin   2/33
+coverage drift   2/33  (captured, margin not kept)
+margin kept      drift tolerated
+  2/33            0
+  1/22            1/66
+  1/33            1/33
+  1/66            1/22
+  0               2/33
+```
+
+Read the first row and the last: the margin is held under **zero** drift, and
+the full margin is only available at zero drift. In between the curve is the
+line `W - v` — the margin you can *demand* costs exactly itself in tolerance,
+so margins and drift tolerance are the same currency spent twice. The design
+that carries `1/6` on the same period behaves identically
+(`drift 180 --max-cost 47 --probes 8`: `1/6 -> 0`, `1/12 -> 1/12`).
+
+Coverage is a genuinely weaker measure, and the gap is not small. This design
+holds `1/6` and still covers under a drift of `37/210`:
+
+```python
+from exact_lattice_quantiles import (best_probes, drift_radius, universe,
+                                    witness_margin)
+
+G = (2, 3, 4, 6, 9, 12, 15, 20, 36, 45, 180)
+_, Q = best_probes(G, universe(180), 4)
+min(witness_margin(G, Q, universe(180)).values())          # 1/6
+min(drift_radius(G, Q, universe(180)).values())            # 37/210
+```
+
+`37/210` is the exact radius of the connected component of the union of
+admissible drift spans that contains zero. An earlier version of
+`drift_radius` answered `1/6` here: it only counted sections that captured a
+divisor at `delta = 0`, and drift can capture. The under-report is asserted in
+`tests/test_coverage.py` against the old formula, so it cannot come back.
+
 ## What the three exit codes mean
 
 The distinction is the point: an infeasible margin cannot be bought, an
@@ -209,22 +266,26 @@ over-budget one can.
 exception: the design was found, the sections were not enough, and the object
 says by how much (`probes_needed`, `witness_margin`).
 
-## Two margins, and which one to quote
+## Four margins, and which one to quote
 
-`Schedule` carries both, and they are not the same quantity:
+Four quantities, and they answer four different questions:
 
+- `design_margin` — what the grid set guarantees before any section is placed.
 - `witness_margin` — what the chosen sections actually hold, with each divisor
   leaning on its own grid/section pair. **Quote this when a schedule is being
   promised.**
-- `robust_margin` — the common drift `delta` absorbed by every section at once.
-  It is **at least** the witness margin, because it lets two different pairs
-  absorb the two drift directions and does not check that the union of
-  admissible `delta` stays an interval. It is therefore *optimistic*; quote it
-  when the question is how much clock error the design was built around.
+- `drift_radius` (`Schedule.robust_margin`) — the largest common drift `delta`
+  the sections still **cover** every divisor under. Exact for coverage; it is
+  *not* optimistic, it is a weaker question: a section may be pushed into a
+  block it never captured, so this can exceed the witness margin (measured
+  above: `37/210` against `1/6`).
+- `drift_tolerance` — the largest common drift `delta` the sections still hold
+  a demanded margin under. `drift_tolerance(..., 0) == drift_radius(...)`, and
+  `drift_tolerance(..., witness_margin)` is `0` on every design measured.
 
-`design_margin` is the third view: what the grid set guarantees before any
-section is placed. The hierarchy `design_margin >= witness_margin` and
-`robust_margin >= witness_margin` is asserted in the test suite.
+The hierarchy `design_margin >= witness_margin` and
+`drift_radius >= witness_margin` is asserted in the test suite. Coverage and
+slack are not the same predicate, and neither is the other's bound.
 
 ## Exactness
 
@@ -238,8 +299,8 @@ returned or stored.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 58 tests
-exact-lattice-quantiles --self-test           # RC 0
+python -m unittest discover -s tests -t .     # 77 tests
+exact-lattice-quantiles --self-test           # 12 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,

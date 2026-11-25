@@ -38,8 +38,8 @@ from .ceiling import (Ceiling, InfeasibleAboveInstanceCeiling,
                       ceiling_by_product, ceiling_by_scan, ceiling_census,
                       instance_ceiling)
 from .coverage import (best_probes, design_margin, drift_radius,
-                       margin_ladder, minimum_cost_design, minimum_probes,
-                       witness_margin)
+                       drift_tolerance, margin_ladder, minimum_cost_design,
+                       minimum_probes, witness_margin)
 from .lattice import (carriers, cell_intervals, cell_width, cell_widths, grids,
                       seats, universe, universe_from_factorization, widths)
 from .pricing import (PriceFormCensus, maximal_divisors, price_exact,
@@ -70,6 +70,7 @@ __all__ = [
     "design_margin",
     "divisors",
     "drift_radius",
+    "drift_tolerance",
     "dropped_primes",
     "euler_phi",
     "grids",

@@ -72,6 +72,24 @@ class TestSolveOutput(unittest.TestCase):
         self.assertEqual(payload["covering"], 96768)
         self.assertEqual(payload["cheapest"], 47)
 
+    def test_drift_prints_the_knife_edge(self):
+        # The witness margin and its vanishing tolerance in the same block: the
+        # pair of numbers is the point of the command.
+        rc, out = run("drift", "180", "--max-cost", "64", "--probes", "4")
+        self.assertEqual(rc, 0)
+        self.assertIn("witness margin   2/33", out)
+        self.assertIn("coverage drift   2/33", out)
+        self.assertIn("2/33            0", out)
+
+    def test_json_drift_is_json(self):
+        rc, out = run("--json", "drift", "180", "--max-cost", "64", "--probes", "4")
+        self.assertEqual(rc, 0)
+        data = json.loads(out)
+        self.assertEqual(data["witness_margin"], "2/33")
+        self.assertEqual(data["coverage_drift"], "2/33")
+        self.assertEqual(data["kept_margin_to_drift"][0], ["2/33", "0"])
+        self.assertEqual(data["kept_margin_to_drift"][-1], ["0", "2/33"])
+
     def test_census_and_ladder_run(self):
         rc, out = run("census", "2", "400")
         self.assertEqual(rc, 0)

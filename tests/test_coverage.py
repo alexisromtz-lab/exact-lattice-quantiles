@@ -8,11 +8,12 @@ from fractions import Fraction
 from itertools import combinations
 
 from exact_lattice_quantiles import (best_probes, design_margin, drift_radius,
-                                     grids, ladder, margin_ladder,
-                                     minimum_cost_design, minimum_probes,
-                                     universe, witness_margin)
+                                     drift_tolerance, grids, ladder,
+                                     margin_ladder, minimum_cost_design,
+                                     minimum_probes, universe, witness_margin)
 from exact_lattice_quantiles.coverage import coverage_census
-from exact_lattice_quantiles.lattice import cell_width, cell_widths
+from exact_lattice_quantiles.lattice import (cell_intervals, cell_width,
+                                             cell_widths)
 
 PAIRS = ((12, 18, 20, 45), (4, 6, 10, 12, 15, 18, 20, 45))
 COSTAR, COST64 = 47, 64
@@ -129,9 +130,9 @@ class TestProbes(unittest.TestCase):
 
 class TestDrift(unittest.TestCase):
     def test_the_common_drift_radius_is_at_least_the_witness_slack(self):
-        # Not an accident: the radius maximises over pairs twice and minimises
-        # once, so it flatters.  A test that asserted the opposite would be
-        # asserting a theorem that is false.
+        # Capture is a weaker condition than slack -- a section may leave the
+        # block it sat in and be pushed into another one -- so the radius can
+        # only be larger.  A test asserting the opposite asserts a falsehood.
         U = universe(180)
         for G in PAIRS:
             for k in (2, 4, 6):
@@ -141,6 +142,76 @@ class TestDrift(unittest.TestCase):
                 drift = min(drift_radius(G, Q, U).values())
                 witness = min(witness_margin(G, Q, U).values())
                 self.assertGreaterEqual(drift, witness, (G, k))
+
+    def test_the_radius_is_the_component_and_not_two_maxima(self):
+        # This design has a section far from every block it captures, and drift
+        # can push it in.  The version that only looks at pairs capturing d at
+        # delta = 0 -- ``min(max(q - L), max(R - q))`` -- answers 1/6 here; the
+        # exact component answers 37/210.
+        U = universe(180)
+        G = (2, 3, 4, 6, 9, 12, 15, 20, 36, 45, 180)
+        _, Q = best_probes(G, U, 4)
+        self.assertEqual(min(drift_tolerance(G, Q, U, Fraction(0)).values()),
+                         Fraction(37, 210))
+        peor = None
+        for d in U:
+            down = up = Fraction(0)
+            for M in G:
+                bloques = {x: (L, R) for x, L, R in cell_intervals(M)}
+                if d not in bloques:
+                    continue
+                L, R = bloques[d]
+                for q in Q:
+                    if L < q <= R:
+                        down = max(down, q - L)
+                        up = max(up, R - q)
+            alcanza = min(down, up) * 2
+            peor = alcanza if peor is None else min(peor, alcanza)
+        self.assertEqual(peor, Fraction(1, 6))
+
+    def test_a_margin_of_zero_gives_the_coverage_radius(self):
+        U = universe(180)
+        for G in PAIRS:
+            for k in range(1, 9):
+                _, Q = best_probes(G, U, k)
+                if not Q:
+                    continue
+                self.assertEqual(
+                    min(drift_tolerance(G, Q, U, Fraction(0)).values()),
+                    min(drift_radius(G, Q, U).values()), (G, k))
+
+    def test_the_witness_margin_survives_no_drift_at_all(self):
+        # Measured, not assumed: at the witness margin the binding divisor sits
+        # on the edge of its block, so the tolerance is zero for every design
+        # checked here.  This is why the curve exists and why the radius is not
+        # a promise about the margin.
+        U = universe(180)
+        for G in PAIRS + ((2, 3, 4, 6, 9, 12, 15, 20, 36, 45, 180),
+                          (4, 6, 12, 18, 20, 36, 45, 90, 180)):
+            for k in (2, 4, 6):
+                _, Q = best_probes(G, U, k)
+                if not Q:
+                    continue
+                mu = min(witness_margin(G, Q, U).values())
+                self.assertEqual(min(drift_tolerance(G, Q, U, mu).values()),
+                                 Fraction(0), (G, k))
+
+    def test_the_curve_of_the_ladder_designs_is_linear(self):
+        # For the two designs the ladder prints the trade is one for one:
+        # every unit of margin kept costs a unit of drift.  Measured over the
+        # five shares; a design where it does not hold would fail here.
+        U = universe(180)
+        for G in PAIRS:
+            for k in range(1, 9):
+                _, Q = best_probes(G, U, k)
+                if not Q:
+                    continue
+                mu = min(witness_margin(G, Q, U).values())
+                for share in (Fraction(0), Fraction(1, 4), Fraction(1, 2),
+                              Fraction(3, 4), Fraction(1)):
+                    self.assertEqual(
+                        min(drift_tolerance(G, Q, U, mu * share).values()),
+                        mu * (1 - share), (G, k, share))
 
     def test_the_witness_set_of_p52_holds_its_radius(self):
         U = universe(180)
