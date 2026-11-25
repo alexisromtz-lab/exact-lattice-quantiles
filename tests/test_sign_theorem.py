@@ -174,6 +174,16 @@ class TheCensusReportsItsOwnRefutation(unittest.TestCase):
                 rc = main(["sign-theorem", "--max-period", "12"])
         self.assertEqual(rc, 1)
 
+    def test_no_band_member_can_have_two_adic_other_than_one(self):
+        # v2(L) >= 2 puts no odd member in the block, so the block saves
+        # L * (e1 - 1) / 2 >= 1 there and the band cannot reach it.  Pinned
+        # over the whole census rather than argued once.
+        census = sign_theorem_census(900)
+        self.assertTrue(census["band_rows"])
+        for row in census["band_rows"]:
+            self.assertEqual(row["two_adic"], 1, row)
+            self.assertEqual(row["excess"], "1", row)
+
     def test_a_period_below_two_is_a_bad_request(self):
         with contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(main(["sign-theorem", "--max-period", "1"]), 3)
