@@ -20,7 +20,7 @@ from fractions import Fraction
 from .ceiling import (InfeasibleAboveInstanceCeiling, ceiling_by_product,
                       ceiling_by_scan, ceiling_census, instance_ceiling)
 from .acta import ManifestError, render, shipped_manifest, verify_file
-from .coverage import (coverage_census, drift_law, drift_radius,
+from .coverage import (coverage_census, design_law, drift_law, drift_radius,
                        drift_tolerance, witness_margin)
 from .lattice import universe
 from .pricing import (block_catalogue, block_of, block_saving,
@@ -132,9 +132,8 @@ def _print_drift(args: argparse.Namespace) -> int:
         kept = schedule.witness_margin * share
         tol = min(drift_tolerance(schedule.design, Q, U, kept).values()) if Q else Fraction(0)
         curve.append((kept, tol))
-    coverage = min(drift_radius(schedule.design, Q, U).values()) if Q else Fraction(0)
-    edge = (min(drift_law(schedule.design, Q, U).values(),
-                key=lambda law: law.critical_margin) if Q else None)
+    design = design_law(schedule.design, Q, U) if Q else None
+    divisor_laws = drift_law(schedule.design, Q, U) if Q else {}
     if args.json:
         print(json.dumps({
             "period": schedule.period,
@@ -142,9 +141,15 @@ def _print_drift(args: argparse.Namespace) -> int:
             "cost": schedule.cost,
             "probes": [str(q) for q in Q],
             "witness_margin": str(schedule.witness_margin),
-            "coverage_drift": str(coverage),
-            "critical_margin": str(edge.critical_margin) if edge else None,
-            "cliff_at_critical_margin": str(edge.cliff) if edge else None,
+            "coverage_drift": str(design.radius if design else Fraction(0)),
+            "linear_regime_end": str(design.radius if design else Fraction(0)),
+            "first_divisor_break": str(design.first_divisor_break) if design else None,
+            "divisor_regimes": {
+                str(d): {"radius": str(law.radius),
+                         "critical_margin": str(law.critical_margin),
+                         "cliff": str(law.cliff)}
+                for d, law in sorted(divisor_laws.items())
+            },
             "kept_margin_to_drift": [[str(v), str(t)] for v, t in curve],
         }, indent=2, sort_keys=True))
         return RC_OK
@@ -153,10 +158,13 @@ def _print_drift(args: argparse.Namespace) -> int:
     print(f"cost             {schedule.cost} points (budget {schedule.max_cost})")
     print(f"sections ({len(Q)})  {[str(q) for q in Q]}")
     print(f"witness margin   {schedule.witness_margin}")
-    print(f"coverage drift   {coverage}  (captured, margin not kept)")
-    if edge is not None:
-        print(f"linear up to     {edge.critical_margin}  "
-              f"(one-for-one price, then a drop of {edge.cliff})")
+    if design is not None:
+        print(f"coverage drift   {design.radius}  (captured, margin not kept)")
+        print(f"tolerance(v)     {design.radius} - v for every v up to {design.radius}"
+              f"  (one-for-one, no cliff)")
+        if design.first_divisor_break < design.radius:
+            print(f"narrowest        divisor regime ends at {design.first_divisor_break}"
+                  f"  (pessimistic: the design pays nothing there)")
     print("margin kept      drift tolerated")
     for kept, tol in curve:
         print(f"  {str(kept):<15} {tol}")
@@ -331,6 +339,17 @@ def _self_test() -> int:
     check("and strictly worse at it",
           drift_tolerance(G, Q, U, edge.critical_margin)[d_edge],
           edge.radius - edge.critical_margin - edge.cliff)
+    shape = design_law(G, Q, U)
+    past = (shape.first_divisor_break + shape.radius) / 2
+    check("the design itself pays one-for-one past that break",
+          min(drift_tolerance(G, Q, U, past).values()), shape.radius - past)
+    check("and all the way to zero tolerance",
+          min(drift_tolerance(G, Q, U, shape.radius).values()), Fraction(0))
+    half = drift_law(G, Q, U, doubled=False)
+    d_half = min(half, key=lambda divisor: half[divisor].critical_margin)
+    check("a critical margin feeds back in the undoubled view too",
+          drift_tolerance(G, Q, U, half[d_half].critical_margin, doubled=False)[d_half],
+          half[d_half].radius - half[d_half].critical_margin - half[d_half].cliff)
     check("block of 270 is {54, 90, 135}", block_of(270)[0], (54, 90, 135))
     check("block of 270 saves 4", block_saving(270), 4)
     check("block of 30 saves nothing", block_saving(30), 0)
