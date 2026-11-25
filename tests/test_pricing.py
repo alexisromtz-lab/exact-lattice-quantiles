@@ -7,8 +7,8 @@ import unittest
 from fractions import Fraction
 
 from exact_lattice_quantiles import (grids, maximal_divisors, price_exact,
-                                     price_form_census, price_one_per_maximal,
-                                     universe)
+                                     price_form_census, price_form_sweep,
+                                     price_one_per_maximal, universe)
 
 
 class TestClosedFormIsAnUpperBound(unittest.TestCase):
@@ -82,6 +82,27 @@ class TestTheTwoUniversesOf180(unittest.TestCase):
         self.assertEqual(price_form_census(180).as_dict()["universe"], "reduced")
         self.assertEqual(price_form_census(180, reduced=False).as_dict()["universe"],
                          "divisors")
+
+
+class TestTheSweepOverEvenPeriods(unittest.TestCase):
+    def test_the_formula_is_the_price_on_every_reduced_universe_to_400(self):
+        data = price_form_sweep(2, 400)
+        self.assertEqual(data["periods"], 200)
+        self.assertEqual(data["adequate"], 200)
+        self.assertEqual(data["inadequate"], 0)
+        self.assertEqual(data["skipped"], [])
+
+    def test_several_grids_are_still_needed_almost_everywhere(self):
+        # The formula is the optimum, but never because one grid would do:
+        # in 192 of the 200 periods the cheapest cover beats every single grid.
+        data = price_form_sweep(2, 400)
+        self.assertEqual(data["cheaper_than_one_grid"], 192)
+        self.assertEqual(data["costliest"], (160, 384))
+
+    def test_the_sweep_publishes_what_it_could_not_afford(self):
+        data = price_form_sweep(360, 360, reduced=False, max_masks=1 << 4)
+        self.assertEqual(data["periods"], 0)
+        self.assertEqual(data["skipped"], [360])
 
 
 if __name__ == "__main__":

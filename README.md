@@ -172,6 +172,21 @@ $ exact-lattice-quantiles price 180
   requests overcharged    9984 (9984/131071) on 10 frontiers
 ```
 
+The boundary is measured, not assumed. Over the reduced universe the formula is
+the exact price for **all 200 even periods up to 400**, and it is still never a
+single grid that does the work: in 192 of the 200 periods the cheapest cover
+beats every single grid.
+
+```
+$ exact-lattice-quantiles prices
+even periods 2..400 over reduced: 200 censused
+  closed form is the price   200
+  closed form overcharges    0
+  cheaper than one grid      192
+  costliest cover            160 points at period 384
+  skipped (unaffordable)     0
+```
+
 So the library never prices with the formula: `price_exact` is a subset DP over
 the coverage masks, and `price_form_census` publishes how often the shortcut
 agrees. Restricting the universe to `U(T)` is what makes the shortcut look

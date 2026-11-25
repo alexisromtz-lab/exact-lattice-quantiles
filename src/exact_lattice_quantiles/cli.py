@@ -19,7 +19,7 @@ from fractions import Fraction
 from .ceiling import (InfeasibleAboveInstanceCeiling, ceiling_by_product,
                       ceiling_by_scan, ceiling_census, instance_ceiling)
 from .coverage import coverage_census
-from .pricing import price_form_census
+from .pricing import price_form_census, price_form_sweep
 from .solve import InfeasibleWithinBudget, ladder, solve_lattice_schedule
 
 RC_OK = 0
@@ -153,6 +153,22 @@ def _print_price(period: int, as_json: bool) -> int:
     return RC_OK
 
 
+def _print_price_sweep(low: int, high: int, as_json: bool) -> int:
+    data = price_form_sweep(low, high)
+    if as_json:
+        print(json.dumps(data, indent=2, sort_keys=True))
+        return RC_OK
+    print(f"even periods {low}..{high} over {data['universe']}: {data['periods']} censused")
+    print(f"  closed form is the price   {data['adequate']}")
+    print(f"  closed form overcharges    {data['inadequate']}")
+    print(f"  cheaper than one grid      {data['cheaper_than_one_grid']}")
+    cost, period = data["costliest"]
+    print(f"  costliest cover            {cost} points at period {period}")
+    skipped = data["skipped"]
+    print(f"  skipped (unaffordable)     {len(skipped)}")
+    return RC_OK
+
+
 def _self_test() -> int:
     """A handful of claims the package makes, checked in-process."""
     ok = True
@@ -241,6 +257,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_price = sub.add_parser(
         "price", help="closed-form price against the exact minimum, both universes")
     p_price.add_argument("period", type=int)
+
+    p_prices = sub.add_parser("prices", help="the same census over a window of periods")
+    p_prices.add_argument("low", type=int, nargs="?", default=2)
+    p_prices.add_argument("high", type=int, nargs="?", default=400)
     return parser
 
 
@@ -269,6 +289,8 @@ def main(argv: list[str] | None = None) -> int:
             return _print_designs(args.period, args.json)
         if args.command == "price":
             return _print_price(args.period, args.json)
+        if args.command == "prices":
+            return _print_price_sweep(args.low, args.high, args.json)
     except ValueError as exc:
         print(f"BAD_REQUEST: {exc}", file=sys.stderr)
         return RC_BAD_REQUEST
