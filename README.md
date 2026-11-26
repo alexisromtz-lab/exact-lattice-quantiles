@@ -405,13 +405,58 @@ sign lemma: if no block saves, no antichain saves
   verdict  no antichain saves where the theorem forbids it
 ```
 
-The odd periods are the one case this argument leaves open: there every member
-of `{L // p}` is odd, so `#odd_B = w` and the slack is `w - 1` instead of `1`,
-and `e1 > 1` needs at least nine odd primes to happen at all. The census reports
-no odd period with `e1 > 1` and a non-saving block, and `sign_regime` says
-`characterised: None` for them rather than guess -- the band there is absent
-from the census, not proved empty. The `v2 >= 2` half *is* a proof, so the tests
-pin it the other way: no band row may have `v2(L) != 1`.
+#### The three regimes are one integer predicate
+
+`#odd_B` is decided by the two-adic valuation alone -- `w` when `L` is odd, one
+when `v2(L) = 1`, none when `4` divides `L` -- so the whole sign reading is
+
+    block_saving(L) = (M - slack(L)) // 2,      M = L * (e1 - 1) in Z,
+    band  <=>  1 <= M <= slack(L),
+
+with `slack = 0` when `4 | L`, `1` when `v2(L) = 1`, and `w - 1` when `L` is
+odd. `band_slack` and `prime_excess` are that predicate, and the test
+`tests/test_odd_band.py::TheUnifiedLaw` holds them against `block_saving` for
+every `L` from `6` to `2000`: one arithmetic statement behind all three rows of
+the census, not three cases.
+
+The odd row is the one the proof could not close, because `M = 1` there *is* an
+odd Giuga number -- `sum(1/p) - prod(1/p) = 1` -- open since 1950. It is no
+longer an unexplained residue either: the band is a window, and the window has a
+floor. Eight odd primes are not enough to cross one (`111429982/111546435`, short
+by `116453/111546435`), so the first candidate sits at `w = 9`, where its excess
+is already `108169298` against a slack of `8`:
+
+```
+$ exact-lattice-quantiles odd-band
+odd band: 1 <= period * (sum 1/p - 1) <= omega - 1
+  odd primes available                    34  at most 150
+  prefixes walked                     355291  minimal feasible sets only
+  threshold                         omega - 1  omega - 1 by law
+  feasibility floor                 omega = 9  product 3234846615 clears the window by 108169298
+  members in the band                      0
+  boundary: an odd member with excess 1 is an odd Giuga number, sum(1/p) - prod(1/p) = 1, open since 1950
+  verdict: no odd period in the band over 355291 prefixes: at most 11 odd primes, each at most 150
+```
+
+`355291` is what verifies, not what it would take to search: the walk enumerates
+only *minimally feasible* sets, because `M(P + q) = q * M(P) + L(P)` with
+`M({}) = -1` means every proper subset of a member has `M <= 0` -- otherwise the
+member would need an excess above `w - 1` for `w < 19686`, which the recursion
+forbids. So the search of an open question stays finite, and it is finite at
+`w = 12` and primes to `200` too: `8410793` prefixes in `31.5 s`, no member.
+
+An empty answer from a pruned walk proves nothing unless the pruning is blind
+-proofed, so the same walk runs with the threshold lifted to `10**9`: it returns
+the floor witness itself, `{3, 5, 7, 11, 13, 17, 19, 23}`, excess `108169298`,
+in `0.03 s`. `--slack` is that control, and `tests/test_odd_band.py` also
+enumerates the band exhaustively by combinations over a smaller horizon and gets
+the same zero. The instrument returns its own refutation when one exists.
+
+What is *not* claimed: that the odd band is empty. It is empty below a horizon
+(`w <= 12`, primes `<= 200`), and a member above it is an odd Giuga number. That
+is why `sign_regime` publishes `characterisation: "giuga-window"` for odd
+periods and `"giuga-equation"` only for the three that solve it -- and why the
+version stays below `1.0.0`.
 
 `1581` of the `1914` proved periods are *sharp*: the heaviest antichain weighs
 exactly the block, so the bound is tight and a proof cannot be pushed further
@@ -684,8 +729,8 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 222 tests
-exact-lattice-quantiles --self-test           # 51 checks, RC 0
+python -m unittest discover -s tests -t .     # 264 tests
+exact-lattice-quantiles --self-test           # 60 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,

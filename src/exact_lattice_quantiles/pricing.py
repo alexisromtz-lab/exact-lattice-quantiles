@@ -382,6 +382,85 @@ def block_saving(n: int) -> int:
     return sum(d // 2 for d in block) - whole // 2
 
 
+def odd_members(n: int) -> int:
+    """How many entries of the drop-one block of ``n`` are odd.
+
+    Every entry is ``n // p``, so the parity is decided by the two-adic valuation
+    of ``n`` alone: ``omega`` entries when ``n`` is odd, ``1`` when exactly one
+    factor ``2`` is available, none when ``4`` divides ``n``.
+    """
+    return sum(1 for d in block_of(n)[0] if d % 2)
+
+
+def band_slack(n: int) -> int:
+    """The points the block may overcharge for free: ``odd_members(n) - [n odd]``.
+
+    The block is charged ``d // 2`` per entry and the grid that covers it is
+    charged ``lcm // 2``.  Each odd entry rounds down once and the total rounds
+    down once, so the two roundings cancel exactly:
+
+        block_saving(n) == (prime_excess(n) - band_slack(n)) // 2
+
+    for every ``n`` with at least two distinct primes -- the unified law behind
+    the three regimes of :func:`sign_regime`.  The slack is ``1`` for a period
+    with exactly one factor ``2`` (the ``858`` shape), ``0`` when ``4`` divides
+    the period (so an excess of ``1`` is unreachable there: ``prime_excess`` is
+    even), and ``omega - 1`` for an odd period, where every entry is odd.
+
+    So the band is not an unexplained residue; it is the region
+    ``1 <= prime_excess(n) <= band_slack(n)`` of one integer predicate.
+
+    The value is read from the primes and not from the block, because a prime
+    period has an empty block (there is nothing to drop) and would report a
+    slack of ``-1``; from ``omega`` the slack is ``omega - 1 = 0`` there, which
+    is the reading the law needs.
+    """
+    if n % 2:
+        return len(primes_of(n)) - 1
+    return 1 if n % 4 else 0
+
+
+def prime_excess(n: int) -> int:
+    """``n * (sum(1/p) - 1)`` as an exact integer: ``sum(n // p) - n``.
+
+    Multiplying by ``n`` clears every denominator, so the sign of the block's
+    excess lives in this integer and not in the reciprocal sum, and the gap to
+    one is ``prime_excess(n) / n`` exactly.  ``prime_excess(30) == 1``,
+    ``prime_excess(60) == 2``, ``prime_excess(858) == 1``, and an odd period of
+    ``omega`` primes is feasible (a reciprocal sum above one) only from
+    ``omega == 9`` on, where the first witness already exceeds ``10**8``.
+    """
+    return sum(n // p for p in primes_of(n)) - n
+
+
+def band_window(product: int, excess: int, threshold: int) -> tuple[int, int]:
+    """The closed interval of primes that would put ``product * q`` in the band.
+
+    Every proper subset of a band member has a reciprocal sum at most one (see
+    :func:`odd_band_census`), so a member is always a prefix with ``excess < 0``
+    extended by one prime.  With ``m = -excess`` the member's excess is
+    ``product - q * m``, which decreases in ``q`` -- hence the three regions are
+    contiguous and the band is one interval:
+
+        ``product - q * m`` in ``[1, threshold]``
+            <=> ``q`` in ``[ceil((product - threshold) / m), (product - 1) // m]``
+
+    A negated result is possible and means no prime can close the band here.
+    The interval has width below ``threshold + 1`` integers, so at most
+    ``threshold`` primes can close it above any one prefix: the band is a
+    window of width ``omega - 1``, never a surface to be scanned.
+    """
+    if product < 1:
+        raise ValueError(f"product must be positive, got {product}")
+    if excess >= 0:
+        raise ValueError(f"excess must be negative here, got {excess}")
+    if threshold < 1:
+        raise ValueError(f"threshold must be at least 1, got {threshold}")
+    slack = -excess
+    low = -((-(product - threshold)) // slack)
+    return low, (product - 1) // slack
+
+
 def carrier_block_of(n: int, carried: tuple[int, ...] | set[int]) -> tuple[tuple[int, ...], int]:
     """The drop-one block of ``n``, kept only where the universe carries it.
 
@@ -524,6 +603,18 @@ def pair_antichain_saving(period: int) -> int:
     return sum(d // 2 for d in grids) - lcm(*grids) // 2
 
 
+def _primes_up_to(limit: int) -> list[int]:
+    """Every prime at most ``limit``, by sieve."""
+    if limit < 2:
+        return []
+    sieve = bytearray([1]) * (limit + 1)
+    sieve[0:2] = b"\x00\x00"
+    for i in range(2, isqrt(limit) + 1):
+        if sieve[i]:
+            sieve[i * i::i] = bytearray(len(range(i * i, limit + 1, i)))
+    return [i for i, flag in enumerate(sieve) if flag]
+
+
 def _first_primes(count: int) -> list[int]:
     """The first ``count`` primes, by sieve."""
     if count <= 0:
@@ -650,11 +741,20 @@ def sign_regime(period: int) -> dict:
     ``sum(1/p) - prod(1/p) = 1``, because for a squarefree period ``1/period``
     is ``prod(1/p)``.
 
-    An odd period has a wider block -- every ``period / p`` is odd, so the
-    slack is ``omega - 1`` instead of ``1`` -- and the characterisation is
-    therefore reported as ``None`` there: its band would need
-    ``period * (sum(1/p) - 1) <= omega - 1``, an inequality no odd period is
-    known to satisfy and none satisfies below the census limit.
+    All three regimes are now one predicate rather than three cases.  With
+    ``m = prime_excess(period) = sum(period / p) - period`` exact and
+    ``slack = band_slack(period)``, the unified law is
+    ``block_saving = (m - slack) // 2``, so
+
+        band  <=>  1 <= m <= slack
+
+    and ``slack`` is what the parity of the period decides: ``1`` when exactly
+    one factor ``2`` is present (the ``30``/``858``/``1722`` equation, which is
+    the Giuga equation), ``0`` when ``4`` divides the period (so no member can
+    exist there, because ``m`` is even), and ``omega - 1`` for an odd period --
+    a *window* of width ``omega`` through Giuga's equation, whose corner
+    ``m == 1`` is an odd Giuga number.  None is known and none exists below the
+    horizon measured in :func:`odd_band_census`.
     """
     if period < 2:
         raise ValueError(f"period must be at least 2, got {period}")
@@ -669,18 +769,156 @@ def sign_regime(period: int) -> dict:
         regime = "block-saves"
     else:
         regime = "band"
-    even_and_composite = period % 2 == 0 and len(primes) >= 2
+    excess = prime_excess(period)
+    slack = band_slack(period)
+    if period % 2:
+        characterisation = "giuga-window"
+    elif twos == 1:
+        characterisation = "giuga-equation"
+    else:
+        characterisation = "no-member-possible"
     return {
         "period": period,
         "primes": list(primes),
         "reciprocal_sum": str(reciprocal),
         "excess": str(period * (reciprocal - 1)),
+        "excess_integer": excess,
+        "slack": slack,
+        "band_predicate": f"1 <= {excess} <= {slack}",
+        "in_band": 1 <= excess <= slack,
         "block": block,
         "two_adic": twos,
         "band_equation": exact_band,
-        "characterised": ((exact_band and twos == 1)
-                          if even_and_composite else None),
+        "characterisation": characterisation,
+        "characterised": True,
         "regime": regime,
+    }
+
+
+def odd_band_census(max_omega: int = 11, max_prime: int = 150,
+                    slack: int | None = None) -> dict:
+    """Every odd period the band can reach below a declared horizon: none, so far.
+
+    An odd period has a wider block than an even one -- every ``period / p`` is
+    odd, so ``band_slack`` is ``omega - 1`` -- and its band is therefore a
+    *window* instead of an equation.  Two facts make the window searchable:
+
+    *Minimal feasibility.*  ``M(P U {q}) = q * M(P) + L(P)`` is exact, so once a
+    set of odd primes has a reciprocal sum above one, every extension of it has
+    ``M >= 3 + 3 ** |P|``.  With ``|P| >= 9`` that is above ``omega - 1`` for
+    every ``omega < 19686``; with ``|P| <= 8`` no odd set crosses one at all,
+    because the first eight odd primes sum to ``111429982 / 111546435``.  Hence
+    **every proper subset of a band member has a reciprocal sum at most one**,
+    and a member is a minimal feasible set extended by a single prime.
+
+    *The window.*  Above such a prefix the member's excess is
+    ``product - q * m``, decreasing in ``q``, so the band is exactly the
+    interval :func:`band_window` returns: of width ``omega``, so at most
+    ``omega`` primes wide.
+
+    Together they fix the shape: at most ``max_omega`` odd primes, each at most
+    ``max_prime``, walk every prefix that has not yet crossed one and price the
+    one-prime extensions of it.  ``prefixes`` reports how much was walked, so an
+    empty answer is a measurement and not an empty loop.
+
+    The boundary is named rather than hidden: ``M == 1`` on an odd period *is*
+    an odd Giuga number, ``sum(1/p) - prod(1/p) == 1``, open since 1950 -- no
+    horizon settles that corner.  What is settled is that the window is entered
+    through ``M == 1`` only and that nothing below the horizon enters it.
+
+    ``slack`` replaces the per-member threshold ``omega - 1`` with a constant
+    one.  That is how the instrument is shown not to be blind: with the
+    threshold lifted the same walk must return members, or the census is
+    measuring its own pruning.
+    """
+    if max_omega < 2:
+        raise ValueError(f"max_omega must be at least 2, got {max_omega}")
+    if max_prime < 3:
+        raise ValueError(f"max_prime must be at least 3, got {max_prime}")
+    odd = tuple(p for p in _primes_up_to(max_prime) if p % 2)
+    floor_omega, floor_row = _odd_feasibility_floor(odd)
+    below_floor = floor_omega is None or max_omega < floor_omega
+    threshold_of = (lambda omega: omega - 1) if slack is None else (lambda _: slack)
+    suffix = [Fraction(0)] * (len(odd) + 1)
+    for i in range(len(odd) - 1, -1, -1):
+        suffix[i] = suffix[i + 1] + Fraction(1, odd[i])
+    bounds = [(s.numerator, s.denominator) for s in suffix]
+    members: list[dict] = []
+    prefixes = 0
+
+    def walk(start: int, chosen: tuple[int, ...], product: int, excess: int) -> None:
+        nonlocal prefixes
+        prefixes += 1
+        numerator, denominator = bounds[start]
+        if -excess * denominator >= numerator * product:
+            return  # the reachable reciprocals cannot lift the sum above one
+        threshold = threshold_of(len(chosen) + 1)
+        for i in range(start, len(odd)):
+            prime = odd[i]
+            member = prime * excess + product
+            if member > threshold:
+                continue  # member falls with the prime, so a later one may fit
+            if member >= 1:
+                members.append({
+                    "primes": [*chosen, prime],
+                    "omega": len(chosen) + 1,
+                    "product": product * prime,
+                    "excess": member,
+                    "slack": len(chosen),
+                })
+            elif len(chosen) + 1 < max_omega:
+                walk(i + 1, (*chosen, prime), product * prime, member)
+
+    walk(0, (), 1, -1)
+    if below_floor:
+        verdict = (f"NO_MEDIDO: at most {max_omega} odd primes cannot have a "
+                   f"reciprocal sum above one, so this horizon cannot reach "
+                   f"the band at all")
+    elif members:
+        verdict = (f"the band has {len(members)} odd members below the "
+                   f"horizon: {[m['primes'] for m in members]}")
+    else:
+        verdict = (f"no odd period in the band over {prefixes} prefixes: at "
+                   f"most {max_omega} odd primes, each at most {max_prime}")
+    return {
+        "max_omega": max_omega,
+        "max_prime": max_prime,
+        "threshold": "omega - 1" if slack is None else slack,
+        "odd_primes_available": len(odd),
+        "prefixes": prefixes,
+        "candidates": members,
+        "status": "below-floor" if below_floor else "measured",
+        "floor": floor_row,
+        "boundary": ("an odd member with excess 1 is an odd Giuga number, "
+                     "sum(1/p) - prod(1/p) = 1, open since 1950"),
+        "verdict": verdict,
+    }
+
+
+def _odd_feasibility_floor(odd: tuple[int, ...]) -> tuple[int | None, dict]:
+    """The smallest number of odd primes whose reciprocal sum can pass one."""
+    total = Fraction(0)
+    product = 1
+    for count, prime in enumerate(odd, start=1):
+        below = total
+        total += Fraction(1, prime)
+        product *= prime
+        if total > 1:
+            return count, {
+                "omega": count,
+                "primes": list(odd[:count]),
+                "product": product,
+                "excess": sum(product // q for q in odd[:count]) - product,
+                "below": f"sum(1/p) over the first {count - 1} odd primes is "
+                         f"{below}, below one",
+            }
+    return None, {
+        "omega": None,
+        "primes": list(odd),
+        "product": product,
+        "excess": None,
+        "below": f"the {len(odd)} odd primes at most {odd[-1] if odd else 0} "
+                 f"sum to {total}, below one",
     }
 
 

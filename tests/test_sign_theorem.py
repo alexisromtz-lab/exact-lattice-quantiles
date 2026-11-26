@@ -140,10 +140,18 @@ class TheBand(unittest.TestCase):
             self.assertEqual(reciprocal_prime_sum(period) - product, 1,
                              f"period {period}")
 
-    def test_an_odd_period_has_no_characterisation_to_offer(self):
-        self.assertIsNone(sign_regime(15)["characterised"])
-        self.assertIsNone(sign_regime(3)["characterised"])
-        self.assertEqual(sign_regime(15)["regime"], "proven-zero")
+    def test_an_odd_period_is_a_window_and_not_an_open_question(self):
+        # An odd band member is an odd Giuga number, open since 1950, so the
+        # characterisation cannot be closed -- but the regime is no longer
+        # unexplained either: it is the window 1 <= excess <= omega - 1.
+        odd = sign_regime(15)
+        self.assertEqual(odd["regime"], "proven-zero")
+        self.assertTrue(odd["characterised"])
+        self.assertEqual(odd["characterisation"], "giuga-window")
+        self.assertLessEqual(odd["excess_integer"], 0)
+        self.assertEqual(odd["slack"], 1)          # omega = 2 for 15
+        self.assertEqual(sign_regime(105)["slack"], 2)   # omega = 3
+        self.assertEqual(sign_regime(3)["slack"], 0)     # omega = 1
 
     def test_the_block_saves_and_there_is_nothing_left_to_prove(self):
         self.assertEqual(sign_regime(60)["regime"], "block-saves")

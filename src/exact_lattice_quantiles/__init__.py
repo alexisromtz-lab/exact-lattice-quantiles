@@ -47,11 +47,12 @@ from .lattice import (TABLE_BUDGET, MaskTableTooLarge, carriers, cell_intervals,
 from .pricing import (PriceFormCensus, antichain_saving_ceiling,
                       best_block_saving, block_catalogue,
                       block_dominance_census, block_of, block_saving,
-                      carrier_block_of, carrier_block_saving,
-                      exactness_frontier, frontier_by_blocks,
-                      maximal_divisors, pair_antichain_of,
-                      pair_antichain_saving, price_exact, price_form_census,
-                      price_form_sweep, price_one_per_maximal,
+                      band_slack, band_window, carrier_block_of,
+                      carrier_block_saving, exactness_frontier,
+                      frontier_by_blocks, maximal_divisors, odd_band_census,
+                      odd_members, pair_antichain_of, pair_antichain_saving,
+                      price_exact, price_form_census,
+                      price_form_sweep, price_one_per_maximal, prime_excess,
                       reciprocal_prime_sum, sign_regime, sign_theorem_census,
                       strong_lemma_frontier, two_adic,
                       worst_antichain_weight)
@@ -59,7 +60,7 @@ from .solve import (OK, PROBES_INSUFFICIENT, UNDERCOVERED,
                     InfeasibleWithinBudget, Schedule, ladder,
                     solve_lattice_schedule)
 
-__version__ = "0.11.0"
+__version__ = "0.12.0"
 
 __all__ = [
     "Ceiling",
@@ -90,6 +91,11 @@ __all__ = [
     "block_catalogue",
     "block_of",
     "block_saving",
+    "band_slack",
+    "band_window",
+    "odd_band_census",
+    "odd_members",
+    "prime_excess",
     "carrier_block_of",
     "carrier_block_saving",
     "frontier_by_blocks",

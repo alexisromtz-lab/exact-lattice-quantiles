@@ -32,12 +32,13 @@ from .coverage import (coverage_census, design_law, drift_law, drift_radius,
                        drift_tolerance, witness_margin)
 from .arithmetic import primes_of
 from .lattice import TABLE_BUDGET, MaskTableTooLarge, mask_table, universe
-from .pricing import (antichain_saving_ceiling, block_catalogue,
+from .pricing import (antichain_saving_ceiling, band_slack, band_window,
+                      block_catalogue,
                       block_dominance_census, block_of, block_saving,
                       carrier_block_of, carrier_block_saving,
-                      exactness_frontier, pair_antichain_of,
+                      exactness_frontier, odd_band_census, pair_antichain_of,
                       pair_antichain_saving, price_exact,
-                      price_form_census, price_form_sweep,
+                      price_form_census, price_form_sweep, prime_excess,
                       reciprocal_prime_sum, sign_regime, sign_theorem_census,
                       strong_lemma_frontier, worst_antichain_weight)
 from .solve import OK, InfeasibleWithinBudget, ladder, solve_lattice_schedule
@@ -412,6 +413,48 @@ def _print_sign_theorem(max_period: int, as_json: bool) -> int:
     return RC_ABOVE_CEILING if broken else RC_OK
 
 
+def _print_odd_band(max_omega: int, max_prime: int, slack: int | None,
+                    as_json: bool) -> int:
+    """The odd half of the band: a window through Giuga's equation, measured.
+
+    ``RC_OK`` when the horizon was walked and nothing is in the band,
+    ``RC_ABOVE_CEILING`` when something is -- the package's own claim refuted by
+    its own census -- and ``RC_NO_MEDIDO`` when the horizon cannot reach a band
+    at all, because reporting "none" from a search that could not cross one
+    would be the dangerous green.
+    """
+    census = odd_band_census(max_omega, max_prime, slack)
+    if as_json:
+        print(json.dumps(census, indent=2, sort_keys=True))
+    else:
+        def line(label: str, value: str, note: str = "") -> str:
+            return f"  {label:<34}{value:>8}  {note}"
+
+        print("odd band: 1 <= period * (sum 1/p - 1) <= omega - 1")
+        print(line("odd primes available", str(census["odd_primes_available"]),
+                   f"at most {max_prime}"))
+        print(line("prefixes walked", str(census["prefixes"]),
+                   "minimal feasible sets only"))
+        print(line("threshold", str(census["threshold"]), "omega - 1 by law"))
+        floor = census["floor"]
+        if floor["omega"] is None:
+            print(line("feasibility floor", "not reached", floor["below"]))
+        else:
+            print(line("feasibility floor", f"omega = {floor['omega']}",
+                       f"product {floor['product']} clears the window by "
+                       f"{floor['excess']}"))
+        print(line("members in the band", str(len(census["candidates"]))))
+        for member in census["candidates"][:8]:
+            print(f"  {' '.join(str(p) for p in member['primes']):<34}"
+                  f"{member['excess']:>8}  excess against slack "
+                  f"{member['slack']}")
+        print(f"  boundary: {census['boundary']}")
+        print(f"  verdict: {census['verdict']}")
+    if census["status"] == "below-floor":
+        return RC_NO_MEDIDO
+    return RC_ABOVE_CEILING if census["candidates"] else RC_OK
+
+
 def _print_verify_acta(manifest: str, as_json: bool, source: str = "") -> int:
     """Recompute the anchors of a manifest: the boundary is a gate, not a memory."""
     try:
@@ -587,6 +630,25 @@ def _self_test() -> int:
           census_300["sign_violations"], [])
     check("the price at 1080 is 135, not 139",
           price_exact(1080, (54, 90, 135)), 135)
+    check("the block's saving is the excess minus the slack, halved",
+          block_saving(180), (prime_excess(180) - band_slack(180)) // 2)
+    check("an odd period carries slack omega - 1, not one",
+          (band_slack(45), band_slack(60), band_slack(36)), (1, 0, 0))
+    check("the window above {3, 5} closes on 2 and lands on 30",
+          (band_window(15, -7, 2), prime_excess(30)), ((2, 2), 1))
+    check("so every period is characterised, the odd one as a window",
+          [sign_regime(p)["characterisation"] for p in (45, 30, 36)],
+          ["giuga-window", "giuga-equation", "no-member-possible"])
+    check("no odd set of eight primes reaches a reciprocal sum of one",
+          odd_band_census(8, 150)["status"], "below-floor")
+    floor = odd_band_census(9, 30)["floor"]
+    check("and the first one that does is nine primes, far above the window",
+          (floor["omega"], floor["excess"]), (9, 108169298))
+    walked = odd_band_census(10, 100)
+    check("no odd period in the band with ten primes at most 100",
+          (walked["candidates"], walked["prefixes"] > 0), ([], True))
+    check("the same walk finds members the moment the threshold is lifted",
+          len(odd_band_census(9, 30, slack=10**9)["candidates"]) > 0, True)
     try:
         anchors = verify_file(shipped_manifest())
     except ManifestError as exc:
@@ -717,6 +779,18 @@ def build_parser() -> argparse.ArgumentParser:
              "sum allows it, and name the band where it does not")
     p_sign.add_argument("--max-period", type=int, default=2000)
 
+    p_odd = sub.add_parser(
+        "odd-band",
+        help="walk every odd period the band can reach below a horizon: an odd "
+             "member is a window through Giuga's equation")
+    p_odd.add_argument("--max-omega", type=int, default=11,
+                       help="most odd primes in a candidate period")
+    p_odd.add_argument("--max-prime", type=int, default=150,
+                       help="largest odd prime a candidate may use")
+    p_odd.add_argument("--slack", type=int, default=None,
+                       help="replace the per-member threshold omega - 1, which"
+                            " is how the walk is shown not to be blind")
+
     p_verify = sub.add_parser(
         "verify-acta",
         help="recompute an acta's anchors from a manifest, naming every field"
@@ -770,6 +844,9 @@ def main(argv: list[str] | None = None) -> int:
             return _print_sign_theorem(args.max_period, args.json)
         if args.command == "verify-acta":
             return _print_verify_acta(args.manifest, args.json, args.source)
+        if args.command == "odd-band":
+            return _print_odd_band(args.max_omega, args.max_prime,
+                                   args.slack, args.json)
     except MaskTableTooLarge as exc:
         print(f"BEYOND_TABLE_BUDGET: {exc}", file=sys.stderr)
         return RC_BEYOND_TABLE_BUDGET
