@@ -871,16 +871,26 @@ Three statements come out of it, and the first one corrects the package:
 - **Nothing above four earns, because zero is the floor.** A fee is a count: once
   a rung reaches `0`, no higher rung can improve on it. That is why the ladder has
   two earning steps and no third.
+- **Over the carriers the freeness arrives by scaling, at `1080`.** Not by a
+  fourth part and not inside the popular horizon of `1000`: `(54, 90, 135)` is
+  nine times the Giuga triple and costs nothing while the triple pays `1`. A fee
+  cannot see that distance, which is why the instrument that measures it is the
+  margin and not the fee.
 
 The reason a block can be free at all is an inversion worth stating plainly: the
 block is cheaper than buying each part, *and* its parts are dearer than the one
 grid that covers them. With `L = lcm(A)` and `delta = sum - L`,
 
 ```
-free  <=>  delta > k  <=>  2B < 0  <=>  sum over the complements  1/(L/a) > 1
+free  <=>  delta > k  <=>  2B < 0  <=>  sum over the complements  1/(L/a) > 1 + k/L
 ```
 
-so a free block is a set of divisors whose **reciprocals pass one**. The smallest
+so a free block is a set of divisors whose **reciprocals pass one by the share of
+its odd parts** -- and no less. Reading the last link as `> 1` was the package's
+own published error until v0.21.0, and its own README witness falsifies it:
+`(6, 10, 15)` has complements `(5, 3, 2)`, so `1/5 + 1/3 + 1/2 = 31/30 > 1`, and
+it still pays `1`, because one odd part moves the threshold to
+`1 + 1/30 = 31/30` -- the block sits *on* the line, not past it. The smallest
 set of primes that does is `1/2 + 1/3 + 1/5 = 31/30`, which is why `60` is the
 first period: there the cofactors `(30, 20, 12)` are all even, `k = 0`, and a
 defect of `2` already frees them -- whereas at `30` the cofactors `(15, 10, 6)`
@@ -929,12 +939,79 @@ Over the carriers `U(T)` no period up to `1000` reaches zero: the floor of the f
 is **one**, and the census says so with a sentence rather than with a zero, which
 would be a frontier of no fee. Over the divisors `D(T)` it is zero from `60` on.
 Two universes, two floors, both published -- the free rung is a property of the
-lattice you price, not of the fee.
+lattice you price, not of the fee. And `1000` is not where the carriers stop: the
+floor of one is a statement about this horizon, and the next section measures how
+far past it the witness sits.
 
 Exit codes are the ladder's own: `RC 0` when the ladder *is* the frontier on every
 period it could check exhaustively, `RC 1` when it is not (the package refuting
 itself), and `RC 4` when it checked nowhere -- because a ladder nobody verified is
 not a ladder measured.
+
+#### The fee cannot see the distance: the carriers cross at `1080`
+
+The transcript above reads a *fee*, and a fee is a quotient. `block_fee` divides a
+block's margin by twice one less part, so on a triple the single fee `1` is
+charged for margin `0` -- free at the next multiple -- and for margin `-2` alike.
+A horizon chosen on fees therefore cannot tell a period sitting on the free line
+from one below it, and that is how the carriers were published with a floor of
+one when their first free block was eighty periods away. The margin itself is an
+integer with no such blind spot: `free_margin(A) = 2 * block_advantage(A)`, which
+is `delta - k` when the lcm is even and `delta - (n - 1)` when it is odd, so a
+block is free exactly when its margin is positive.
+
+```
+$ exact-lattice-quantiles free-margin
+free margin: the distance to a free block, in integers
+  horizon                 1200            carriers universe, 590 periods measured
+  first crossing          1080            (54, 90, 135), margin 8, 23 grids
+  touching the line       19              margin exactly 0, free at the next multiple: 60, 120, 180, 240, 300, 360, 420, 480
+  strictly below          570             every measured period with a negative margin
+  widest margin           8               at 1080 on (54, 90, 135)
+  verdict  the carriers cross the free line at 1080 on (54, 90, 135) with margin 8, after 19 periods touching it at margin 0
+```
+
+Nineteen periods *touch* the line, every one of them a multiple of `60`, and every
+one of them on the same block `(6, 10, 15)` -- the Giuga triple, whose defect
+equals its single odd part exactly. One period crosses, `1080 = 18 * 60`, on
+`(54, 90, 135) = 9 * (6, 10, 15)`: **the carriers reach free by scaling, not by
+adding a part.** The block is the same three parts multiplied by nine, and it is
+in `U(1080)` because `1080` is divisible by all three of them.
+
+The mechanism is one line of algebra. The defect and the lcm both scale,
+`delta(kA) = k * delta(A)` and `lcm(kA) = k * lcm(A)`, while the count of odd
+parts does not: `kA` is all even for even `k` and keeps `A`'s odd parts for odd
+`k`. So `margin(kA) = k * delta(A) - (k odd ? #{odd parts of A} : 0)`, which for
+the Giuga triple is `k` for even `k` and `k - 1` for odd `k` -- free for every
+`k >= 2`. Which `k` a carrier universe admits is then the only question, and up
+to `4000` the answer is exactly `9`, `14`, `18` and `22`: the triple itself costs
+`1`, and every scaling that lands in the lattice lands free.
+
+Over the divisors the same instrument reads `30` and `858` -- the two smallest
+Giuga numbers inside the horizon, each on its own cofactor block, each paying
+exactly `1` -- and crosses from `60`:
+
+```
+$ exact-lattice-quantiles free-margin --universe divisors
+free margin: the distance to a free block, in integers
+  horizon                 1200            divisors universe, 590 periods measured
+  first crossing          60              (12, 20, 30), margin 2, 11 grids
+  touching the line       2               margin exactly 0, free at the next multiple: 30, 858
+  strictly below          542             every measured period with a negative margin
+  widest margin           184             at 1050 on (150, 210, 350, 525)
+  verdict  the divisors cross the free line at 60 on (12, 20, 30) with margin 2, after 2 periods touching it at margin 0
+```
+
+Two universes again, and this time the numbers say what the fees only hinted at:
+the divisor lattice *leaves* the line at `60`, while the carrier lattice sits on it
+nineteen times and only `1080` gets past.
+
+`free-margin` exits `RC 0` when its own witness reproduces -- the block is in the
+universe, `block_free` agrees, and the margin is the one claimed -- `RC 1` when it
+does not, and `RC 4` when the horizon had no pair of incomparable grids at all, so
+nothing was measured. There is no `--exhaustive-until` here on purpose: the search
+walks every antichain of the universe itself, so its horizon is the horizon and
+not a calibration of one.
 
 #### The fee of a block is not a search: it is half its defect
 
@@ -1459,8 +1536,8 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 418 tests
-exact-lattice-quantiles --self-test           # 112 checks, RC 0
+python -m unittest discover -s tests -t .     # 428 tests
+exact-lattice-quantiles --self-test           # 116 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,

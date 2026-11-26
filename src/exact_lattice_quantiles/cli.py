@@ -44,6 +44,7 @@ from .pricing import (antichain_saving_ceiling, arity_ladder_census, band_slack,
                       block_fee, block_fee_closed, block_free,
                       block_of, block_saving,
                       carrier_block_of, carrier_block_saving, cofactor_block,
+                      free_margin, free_margin_census,
                       excess_parity, exactness_frontier, extremal_census,
                       fee_frontier_by_blocks, fee_frontier_census,
                       heaviest_antichain,
@@ -778,6 +779,60 @@ def _print_fee_census(max_period: int, reduced: bool, arity: int,
     return RC_OK
 
 
+def _print_free_margin(max_period: int, reduced: bool, as_json: bool) -> int:
+    """Where each universe touches the free line and where it crosses.
+
+    ``RC_ABOVE_CEILING`` when the census's own witness does not reproduce -- the
+    reported block must be in its universe, cost nothing, and carry the margin
+    claimed -- and ``RC_NO_MEDIDO`` when no period in the horizon had two
+    incomparable grids, so no block was measured at all.  A horizon that never
+    crosses is *not* an error: it is the measured floor of that universe.
+    """
+    row = free_margin_census(max_period=max_period, reduced=reduced)
+    if as_json:
+        print(json.dumps(row, indent=2, sort_keys=True))
+    else:
+        def line(label: str, value: str, note: str = "") -> str:
+            return f"  {label:<24}{value:<16}{note}"
+
+        print("free margin: the distance to a free block, in integers")
+        print(line("horizon", str(row["max_period"]),
+                   f"{row['universe']} universe, "
+                   f"{row['periods_measured']} periods measured"))
+        free = row["first_free"]
+        print(line("first crossing",
+                   "none in horizon" if free is None else str(free["period"]),
+                   "no block is free here" if free is None else
+                   f"{free['block']}, margin {free['margin']}, "
+                   f"{free['universe_size']} grids"))
+        print(line("touching the line", str(len(row["on_line"])),
+                   "margin exactly 0, free at the next multiple: " +
+                   (", ".join(str(r["period"]) for r in row["on_line"][:8])
+                    or "none")))
+        print(line("strictly below", str(row["below"]),
+                   "every measured period with a negative margin"))
+        print(line("widest margin", str(row["best"]["margin"]) if row["best"]
+                   else "NO_MEDIDO",
+                   f"at {row['best']['period']} on {row['best']['block']}"
+                   if row["best"] else ""))
+        print(f"  verdict  {row['verdict']}")
+    free = row["first_free"]
+    if free is not None:
+        pool = universe(free["period"]) if reduced else grids(free["period"])
+        reproduced = (all(part in pool for part in free["block"])
+                      and free_margin(free["block"]) == free["margin"]
+                      and block_free(free["block"]))
+        if not reproduced:
+            print(f"REFUTED: {free['block']} at period {free['period']} does not"
+                  f" reproduce margin {free['margin']}", file=sys.stderr)
+            return RC_ABOVE_CEILING
+    if row["periods_measured"] == 0:
+        print(f"NO_MEDIDO: no period up to {max_period} had two incomparable "
+              f"grids, so no block exists to measure", file=sys.stderr)
+        return RC_NO_MEDIDO
+    return RC_OK
+
+
 def _print_arity_ladder(max_period: int, reduced: bool, arities: str,
                         exhaustive_until: int, as_json: bool) -> int:
     """How many parts the frontier needs, and where the free rung opens.
@@ -1248,7 +1303,7 @@ def _self_test() -> int:
     check("and where a triple does beat them all, the fee is at most one",
           len(law["pair_misses"]) == len(law["at_zero"]) + len(law["at_one"]),
           True)
-    check("a block whose parts are dearer than their lcm pays nothing at all",
+    check("a block dearer than its lcm by more than its odd parts pays nothing",
           (block_free((12, 20, 30)), block_fee((12, 20, 30)),
            block_free((6, 10, 15)), block_fee((6, 10, 15))),
           (True, 0, False, 1))
@@ -1274,6 +1329,20 @@ def _self_test() -> int:
           (block_defect(cofactor_block((2, 3, 7, 41))),
            block_fee(cofactor_block((2, 3, 7, 41))),
            block_free(cofactor_block((2, 3, 7, 11)))), (1, 1, True))
+    check("a fee cannot see the distance: fee 1 covers margin 0 and -2",
+          (block_fee((6, 10, 15)), free_margin((6, 10, 15)),
+           free_margin((12, 20, 30))), (1, 0, 2))
+    check("so the carriers cross at 1080, eighty periods past a fee horizon",
+          free_margin_census(max_period=1200)["first_free"]["period"], 1080)
+    check("and they touch the line at every multiple of 60 before that",
+          [row["period"] for row in
+           free_margin_census(max_period=1200)["on_line"]][:3],
+          [60, 120, 180])
+    check("the divisors cross from 60, and their zeros are the Giuga numbers",
+          (free_margin_census(max_period=1200, reduced=False)["first_free"]["period"],
+           [row["period"] for row in
+            free_margin_census(max_period=1200, reduced=False)["on_line"]]),
+          (60, [30, 858]))
     check("and a chain answers with no frontier, not with a zero",
           (fee_frontier_by_blocks(4)["chain"],
            fee_frontier_by_blocks(6)["frontier"],
@@ -1503,6 +1572,16 @@ def build_parser() -> argparse.ArgumentParser:
                           help="check the ladder against every antichain when "
                                "|U| is at most this; 15 is what reaches 462")
 
+    p_margin = sub.add_parser(
+        "free-margin",
+        help="the distance to a free block, in integers: where each universe "
+             "touches the free line and where it crosses it")
+    p_margin.add_argument("--max-period", type=int, default=1200)
+    p_margin.add_argument(
+        "--universe", choices=("reduced", "divisors"), default="reduced",
+        help="the carriers U(T), where the line is touched at every multiple "
+             "of 60 and crossed at 1080, or every divisor D(T)")
+
     p_univ = sub.add_parser(
         "universes",
         help="census the reciprocal sum against both universes, period by "
@@ -1585,6 +1664,9 @@ def main(argv: list[str] | None = None) -> int:
                                        args.universe == "reduced",
                                        args.arities, args.exhaustive_until,
                                        args.json)
+        if args.command == "free-margin":
+            return _print_free_margin(args.max_period,
+                                      args.universe == "reduced", args.json)
         if args.command == "universes":
             return _print_universes(args.max_period, args.json)
     except MaskTableTooLarge as exc:
