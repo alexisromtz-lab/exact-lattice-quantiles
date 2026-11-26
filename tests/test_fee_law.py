@@ -97,6 +97,47 @@ class TheCensus(unittest.TestCase):
             [m["period"] for m in pairs["mismatches"]][:2], [60, 84])
 
 
+class ThePairLaw(unittest.TestCase):
+    """The third part buys one thing only: a fee of one.
+
+    A pair is where the frontier lands whenever the fee reaches two, so the
+    census could enumerate pairs instead of triples -- and the periods where it
+    cannot are exactly the ones a triple is needed for, which is what makes the
+    two statements one.
+    """
+
+    def test_a_triple_beats_every_pair_only_below_a_fee_of_two(self):
+        row = fee_frontier_by_blocks(180)
+        self.assertEqual((row["frontier"], row["pair_frontier"]), (1, 2))
+        self.assertEqual(row["pair_witness"], (2, 3))
+
+    def test_and_where_no_triple_wins_the_pair_is_the_frontier(self):
+        row = fee_frontier_by_blocks(1994)
+        self.assertEqual(row["frontier"], row["pair_frontier"])
+
+    def test_a_chain_has_neither_frontier_nor_pair(self):
+        row = fee_frontier_by_blocks(4)
+        self.assertIsNone(row["pair_frontier"])
+        self.assertEqual(row["pair_witness"], ())
+
+    def test_the_periods_a_triple_wins_are_the_periods_at_a_fee_of_one(self):
+        census = fee_frontier_census(max_period=400)
+        self.assertEqual(census["pair_over"], ())
+        self.assertEqual(len(census["pair_misses"]),
+                         len(census["at_zero"]) + len(census["at_one"]))
+        self.assertEqual(census["at_zero"], ())
+
+    def test_the_law_names_the_fee_it_leaves_to_the_third_part(self):
+        self.assertIn("the fee of one",
+                      fee_frontier_census(max_period=400)["pair_law"])
+
+    def test_at_two_parts_the_pair_law_declares_itself_unmeasured(self):
+        row = fee_frontier_census(max_period=400, arity=2)
+        self.assertTrue(row["pair_law"].startswith("NOT_APPLICABLE"),
+                        row["pair_law"])
+        self.assertEqual((row["pair_misses"], row["pair_over"]), ((), ()))
+
+
 class TheCommandLine(unittest.TestCase):
     def run_cli(self, *argv):
         out, err = io.StringIO(), io.StringIO()
@@ -110,6 +151,19 @@ class TheCommandLine(unittest.TestCase):
         self.assertIn("mismatches", out)
         self.assertIn("(6, 10, 15)", out)
 
+    def test_the_pair_law_is_printed_beside_the_verdict(self):
+        rc, out, _ = self.run_cli("fee-census", "--max-period", "200")
+        self.assertEqual(rc, 0)
+        self.assertIn("pairs miss", out)
+        self.assertIn("pair law", out)
+
+    def test_a_two_part_census_prints_no_pair_rows(self):
+        rc, out, _ = self.run_cli("fee-census", "--max-period", "200",
+                                  "--arity", "2")
+        self.assertEqual(rc, 1)
+        self.assertNotIn("pairs miss", out)
+        self.assertIn("NOT_APPLICABLE", out)
+
     def test_a_refuted_law_exits_one(self):
         rc, _, err = self.run_cli("fee-census", "--max-period", "200",
                                   "--arity", "2")
@@ -121,6 +175,7 @@ class TheCommandLine(unittest.TestCase):
                  "at_zero": (), "at_one": (), "rows": (),
                  "universe": "U(T)", "arity": 3, "verify_universe": 14,
                  "largest": None, "verified_witness_sizes": {},
+                 "pair_misses": (), "pair_over": (), "pair_law": "",
                  "theorem": "", "verdict": "NO_MEDIDO"}
         with mock.patch("exact_lattice_quantiles.cli.fee_frontier_census",
                         return_value=empty):

@@ -691,6 +691,7 @@ def _print_fee_census(max_period: int, reduced: bool, arity: int,
         print(line("chains", str(len(row["chains"])),
                    "no antichain at all: no fee breaks these"))
         print(line("at zero", str(len(row["at_zero"])),
+                   "none in this horizon" if not row["at_zero"] else
                    f"already broken at no fee {row['at_zero'][:7]}"))
         print(line("at one", str(len(row["at_one"])),
                    "break first at a fee of 1"))
@@ -703,10 +704,21 @@ def _print_fee_census(max_period: int, reduced: bool, arity: int,
         print(line("witness sizes",
                    ", ".join(f"{k}: {v}" for k, v in sorted(sizes.items())),
                    "on the verified periods"))
+        if row["arity"] >= 3:
+            print(line("pairs miss", str(len(row["pair_misses"])),
+                       "a triple beats every pair"))
+            print(line("pair over", str(len(row["pair_over"])),
+                       "of those, above a fee of one: the law refuted if not 0"))
+        print(f"  pair law {row['pair_law']}")
         print(f"  verdict  {row['verdict']}")
     if row["mismatches"]:
         print(f"REFUTED: the block law misprices {len(row['mismatches'])} of "
               f"{row['periods']} periods up to {max_period}",
+              file=sys.stderr)
+        return RC_ABOVE_CEILING
+    if row["pair_over"]:
+        print(f"REFUTED: {len(row['pair_over'])} periods reach a fee of two or "
+              f"more only through a triple, so a pair does not suffice",
               file=sys.stderr)
         return RC_ABOVE_CEILING
     if row["verified"] == 0:
@@ -1115,6 +1127,11 @@ def _self_test() -> int:
           (law["mismatches"],
            law["verified"] == sum(1 for r in law["rows"]
                                   if r["universe_size"] <= 10)), ([], True))
+    check("a triple never beats every pair once the fee reaches two",
+          law["pair_over"], ())
+    check("and where a triple does beat them all, the fee is at most one",
+          len(law["pair_misses"]) == len(law["at_zero"]) + len(law["at_one"]),
+          True)
     check("and a chain answers with no frontier, not with a zero",
           (fee_frontier_by_blocks(4)["chain"],
            fee_frontier_by_blocks(6)["frontier"],

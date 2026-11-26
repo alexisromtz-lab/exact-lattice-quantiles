@@ -470,8 +470,11 @@ def fee_frontier_by_blocks(period: int, reduced: bool = True,
         raise ValueError("arity counts parts of a block, so it starts at two")
     U = universe(period) if reduced else grids(period)
     best, witness = None, ()
+    pair, pair_witness = None, ()
     for A in _antichains(U, arity):
         fee = block_fee(A)
+        if len(A) == 2 and (pair is None or fee < pair):
+            pair, pair_witness = fee, A
         if best is None or fee < best:
             best, witness = fee, A
             if best == 0:
@@ -484,6 +487,8 @@ def fee_frontier_by_blocks(period: int, reduced: bool = True,
         "frontier": best,
         "witness": witness,
         "chain": best is None,
+        "pair_frontier": pair,
+        "pair_witness": pair_witness,
     }
 
 
@@ -528,6 +533,7 @@ def fee_frontier_census(max_period: int = 2000, reduced: bool = True,
         raise ValueError("a universe of one grid has no antichain to verify")
     period_rows, mismatches, chains, at_zero, at_one = [], [], [], [], []
     verified, largest, witness_sizes = 0, None, {}
+    pair_over, pair_misses = [], []
     for period in range(2, max_period + 1, 2):
         row = fee_frontier_by_blocks(period, reduced=reduced, arity=arity)
         period_rows.append(row)
@@ -541,6 +547,16 @@ def fee_frontier_census(max_period: int = 2000, reduced: bool = True,
             if largest is None or row["frontier"] > largest["frontier"]:
                 largest = {"period": period, "frontier": row["frontier"],
                            "witness": row["witness"]}
+            if (row["pair_frontier"] is not None
+                    and row["pair_frontier"] > row["frontier"]):
+                pair_misses.append(period)
+            if (row["pair_frontier"] is not None
+                    and row["pair_frontier"] > row["frontier"]
+                    and row["frontier"] >= 2):
+                pair_over.append({"period": period,
+                                  "frontier": row["frontier"],
+                                  "pair_frontier": row["pair_frontier"],
+                                  "witness": row["witness"]})
         if row["universe_size"] <= verify_universe:
             verified += 1
             truth, truth_witness = _exhaustive_fee(
@@ -553,6 +569,18 @@ def fee_frontier_census(max_period: int = 2000, reduced: bool = True,
                 size = len(truth_witness)
                 witness_sizes[size] = witness_sizes.get(size, 0) + 1
     universe_name = "U(T)" if reduced else "D(T)"
+    if arity < 3:
+        pair_law = (
+            f"NOT_APPLICABLE: at {arity} parts the law is already the pairs, so "
+            f"no triple is enumerated and nothing here measures what one buys")
+    else:
+        pair_law = (
+            f"{len(pair_misses)} periods put a triple above every pair and all "
+            f"of them sit at a fee of at most one, so the third part buys "
+            f"exactly one thing: the fee of one"
+            if not pair_over else
+            f"REFUTED at {len(pair_over)} periods: a triple reaches a fee below "
+            f"every pair of its universe while the fee is already two or more")
     if verified == 0:
         verdict = (
             f"NO_MEDIDO: no period up to {max_period} has a universe of at most "
@@ -597,11 +625,16 @@ def fee_frontier_census(max_period: int = 2000, reduced: bool = True,
         "at_one": tuple(at_one),
         "largest": largest,
         "verified_witness_sizes": witness_sizes,
+        "pair_misses": tuple(pair_misses),
+        "pair_over": tuple(pair_over),
+        "pair_law": pair_law,
         "rows": tuple(period_rows),
         "theorem": (
             "the frontier of a period is the minimal fee over its antichains; a "
             "pair needs 2 and attains it at (2, 3); a triple can need only 1; "
-            "and a universe that is a chain never breaks"),
+            "and a universe that is a chain never breaks. The minimum is "
+            "attained by a pair unless it is 0 or 1, so the third part buys "
+            "only the fee of one"),
         "verdict": verdict,
     }
 
