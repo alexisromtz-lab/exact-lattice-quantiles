@@ -749,10 +749,10 @@ failed:
 - **`1080` breaks with no fee at all**, which is the break the carrier-block law
   found from the other side. Two instruments, one number.
 
-The law is a minimum over antichains of at most three parts, which is cheap; the
-*check* is exhaustive over antichains of any size, which is not. So the census
-publishes `909` verified periods rather than pretending to `1 000`, and the check
-is the reason to trust the law outside them. Restricting the law to pairs is
+This census prices the frontier with antichains of at most three parts, which is
+cheap; the *check* is exhaustive over antichains of any size, which is not. So the
+census publishes `909` verified periods rather than pretending to `1 000`, and the
+check is the reason to trust the law outside them. Restricting the law to pairs is
 enough to refute it, and the refutation names exactly the periods a triple is
 needed for:
 
@@ -836,6 +836,105 @@ different witnesses: the fee of one still needs `(6, 10, 15)` or `(6, 14, 21)`
 and nothing above it ever needs a triple. What changes between universes is not
 the pair law but where the frontier reaches zero -- and that is published as data,
 not assumed by the law.
+
+#### The fourth part is free, and the free rung is Giuga's
+
+The frontier is a minimum over blocks, so a bigger block can only lower it, and
+until v0.19.0 this package stopped the claim at three parts. That stop was wrong,
+and it was wrong in the direction that matters: the census verified every period
+whose universe fits in **14** grids, and the first block that reaches a fee of
+zero needs **15**. A verification horizon one grid short of the first witness is
+a green in the dangerous direction, so v0.20.0 publishes the horizon and the
+witness side by side:
+
+```
+$ exact-lattice-quantiles arity-ladder --max-period 1000
+arity ladder: how many parts the fee frontier needs
+  horizon               1000              divisors universe, rungs (2, 3, 4, 5)
+    2->3                52                first 30 on (6, 10, 15) (2 -> 1, 7 grids)
+    3->4                7                 first 462 on (42, 66, 154, 231) (1 -> 0, 15 grids)
+    4->5                0                 never earns
+  first free block      60                (12, 20, 30), already free with 3 part(s)
+  periods at zero       38                (60, 90, 120, 150, 180, 210, 240)
+  verified              442               against every antichain (|U| <= 15)
+  mismatches            0                 the ladder against the exhaustive frontier
+  verdict  the ladder earns 2->3: 52 3->4: 7 4->5: 0 period(s); a free block first appears at 60 on (12, 20, 30), which 3 part(s) already reach, so the last step that earns is 3->4, at 7 period(s), first 462 on (42, 66, 154, 231); no block above 4 parts earns over one at 4 on any period up to 1000, and the ladder matches the exhaustive frontier on all 442 periods whose universe is at most 15 grids
+```
+
+Three statements come out of it, and the first one corrects the package:
+
+- **The free rung opens with three parts, at `60`.** Not with four. `(12, 20, 30)`
+  costs nothing at all, and it is the cofactor block of the primes `2, 3, 5`.
+- **The fourth part is free where the third stalls at one.** `462 = 2 * 3 * 7 * 11`
+  has `(42, 66, 154, 231)` free while every triple there costs `1`, and the seven
+  periods up to `1000` where that happens are `462, 546, 714, 798, 858, 924, 966`.
+- **Nothing above four earns, because zero is the floor.** A fee is a count: once
+  a rung reaches `0`, no higher rung can improve on it. That is why the ladder has
+  two earning steps and no third.
+
+The reason a block can be free at all is an inversion worth stating plainly: the
+block is cheaper than buying each part, *and* its parts are dearer than the one
+grid that covers them. With `L = lcm(A)` and `delta = sum - L`,
+
+```
+free  <=>  delta > k  <=>  2B < 0  <=>  sum over the complements  1/(L/a) > 1
+```
+
+so a free block is a set of divisors whose **reciprocals pass one**. The smallest
+set of primes that does is `1/2 + 1/3 + 1/5 = 31/30`, which is why `60` is the
+first period: there the cofactors `(30, 20, 12)` are all even, `k = 0`, and a
+defect of `2` already frees them -- whereas at `30` the cofactors `(15, 10, 6)`
+contain an odd part, the defect is `1`, and the same prime set costs `1`. One
+exponent of `2` is the whole difference.
+
+And **no pair can ever be free**, which is what puts `2` at the bottom of the
+ladder instead of `1`: for incomparable `a < b`, `lcm(a, b) >= 2b > a + b`, so the
+defect is at most `-1` and `B >= 1` in either parity -- a fee of at least two,
+measured over the `8 062` incomparable pairs of both universes up to `600`.
+
+The far end of the same statement is Giuga's equation, which the package met in
+v0.10.0 from the odd band and meets again here from the free rung. For the
+cofactor block of a squarefree `L`, `delta = L * (sum 1/p - 1)`, so
+
+- `delta = 1` is `sum 1/p - 1/L = 1`, **Giuga's equation**: `30`, `858`, `1722`.
+  A block one defect short of free, and it pays `1`, not `0`.
+- `delta = -1` is `sum 1/p + 1/L = 1`, the **primary pseudoperfect** periods,
+  whose smallest members with two primes are `6` and `42`.
+- `delta >= 2` is past Giuga, and it is free: `{2, 3, 7, 11}` gives `462` with a
+  defect of `31`. `{2, 3, 7}` alone gives `41/42 < 1`, which is exactly why the
+  quadruple is needed *there* and not at `60`.
+
+`cofactor_block((2, 3, 7, 41))` and `cofactor_block((2, 3, 7, 11))` are the two
+sides of that boundary -- `1722` pays one, `462` pays nothing -- and `block_free`
+is the predicate that separates them.
+
+The ladder is not the same over the other universe, and the census does not
+average the two:
+
+```
+$ exact-lattice-quantiles arity-ladder --max-period 1000 --universe reduced
+arity ladder: how many parts the fee frontier needs
+  horizon               1000              reduced universe, rungs (2, 3, 4, 5)
+    2->3                25                first 60 on (6, 10, 15) (2 -> 1, 8 grids)
+    3->4                0                 never earns
+    4->5                0                 never earns
+  first free block      none in horizon   every period here keeps a fee of at least one
+  periods at zero       0                 none in this horizon
+  verified              468               against every antichain (|U| <= 15)
+  mismatches            0                 the ladder against the exhaustive frontier
+  verdict  NO_PERIOD REACHES ZERO up to 1000 over the reduced universe: the ladder earns 2->3: 25 3->4: 0 4->5: 0 period(s) and no rung is free, so the floor of the fee is one here rather than zero
+```
+
+Over the carriers `U(T)` no period up to `1000` reaches zero: the floor of the fee
+is **one**, and the census says so with a sentence rather than with a zero, which
+would be a frontier of no fee. Over the divisors `D(T)` it is zero from `60` on.
+Two universes, two floors, both published -- the free rung is a property of the
+lattice you price, not of the fee.
+
+Exit codes are the ladder's own: `RC 0` when the ladder *is* the frontier on every
+period it could check exhaustively, `RC 1` when it is not (the package refuting
+itself), and `RC 4` when it checked nowhere -- because a ladder nobody verified is
+not a ladder measured.
 
 #### The fee of a block is not a search: it is half its defect
 
@@ -1360,8 +1459,8 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 405 tests
-exact-lattice-quantiles --self-test           # 104 checks, RC 0
+python -m unittest discover -s tests -t .     # 418 tests
+exact-lattice-quantiles --self-test           # 112 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,

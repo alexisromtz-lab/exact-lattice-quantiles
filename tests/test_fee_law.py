@@ -1,12 +1,14 @@
-"""The fee frontier is a law: two parts cost two, and a fee of one needs a triple.
+"""The fee frontier is a law: two parts cost two, a triple one, and a fourth is free.
 
 ``setup_fee_frontier`` walks the fee upwards and reports where the closed form
 first breaks, one period at a time.  ``fee_frontier_census`` answers the same
 question without walking: the fee at which a request breaks is ``block_fee`` of
-an antichain, so the frontier of a period is a minimum over its antichains -- and
-the claim under test is that this minimum is always attained with two or three
-parts.  Only an antichain can break the formula, because it prices the maximals
-of a request and a part that divides another is never priced apart.
+an antichain, so the frontier of a period is a minimum over its antichains --
+and the first claim under test, that this minimum is always attained with two
+or three parts, is the one the package published until v0.19.0 and its own
+``TheFourthPart`` broke in v0.20.0.  Only an antichain can break the formula,
+because it prices the maximals of a request and a part that divides another is
+never priced apart.
 
 The three states are kept apart: ``frontier = None`` means the universe is a
 chain and no fee ever breaks it (a positive answer, not a zero), ``0`` means the
@@ -22,8 +24,10 @@ from unittest import mock
 
 from itertools import combinations
 
-from exact_lattice_quantiles import (block_advantage, block_defect, block_fee,
-                                     block_fee_closed, fee_frontier_by_blocks,
+from exact_lattice_quantiles import (arity_ladder_census, block_advantage,
+                                     block_defect, block_fee, block_fee_closed,
+                                     block_free, cofactor_block,
+                                     fee_frontier_by_blocks,
                                      fee_frontier_census, grids, universe)
 from exact_lattice_quantiles.cli import main
 
@@ -268,3 +272,154 @@ class TheBlockFeeCommand(unittest.TestCase):
         self.assertEqual(rc, 3)
         self.assertEqual(out, "")
         self.assertIn("NO BLOCK", err)
+
+
+class TheFourthPart(unittest.TestCase):
+    """The ladder of arities: a pair costs two, a triple one, a fourth is free.
+
+    The claim the package published until v0.19.0 -- that the frontier is always
+    attained with two or three parts -- is false, and what refutes it is a block
+    of four parts that costs nothing where every triple of the same period costs
+    one.  The census that missed it did not miss it by arithmetic: its
+    verification horizon stopped one grid below the first witness.  So the tests
+    here pin the witnesses, pin the horizon that reaches them, and keep the free
+    rung's floor -- zero -- separate from the fee that attains it.
+    """
+
+    def test_free_means_the_parts_are_dearer_than_their_lcm(self):
+        self.assertTrue(block_free((12, 20, 30)))       # 62 > 60, all parts even
+        self.assertEqual(block_fee((12, 20, 30)), 0)
+        self.assertFalse(block_free((6, 10, 15)))       # 31 > 30 but one part odd
+        self.assertEqual(block_fee((6, 10, 15)), 1)
+        self.assertTrue(block_free((42, 66, 154, 231)))  # 493 > 462
+        self.assertEqual(block_fee((42, 66, 154, 231)), 0)
+
+    def test_no_pair_is_ever_free(self):
+        """``lcm`` doubles the larger part, so a pair's defect is never positive.
+
+        This is why the ladder's second rung is not 1: a fee of two is the floor
+        for two parts, in both universes, for every period measured.
+        """
+        checked = 0
+        for period in range(6, 301, 6):
+            for U in (universe(period), grids(period)):
+                for parts in combinations(U, 2):
+                    if max(parts) % min(parts) == 0:
+                        continue
+                    checked += 1
+                    self.assertFalse(block_free(parts), (period, parts))
+                    self.assertGreaterEqual(block_fee(parts), 2, (period, parts))
+        self.assertGreater(checked, 1_000)
+
+    def test_a_free_block_always_has_a_reciprocal_sum_above_one(self):
+        """``free => sum(1/complement) > 1``, which a pair cannot satisfy."""
+        from fractions import Fraction
+        from math import lcm as _lcm
+        checked = 0
+        for period in range(2, 301, 2):
+            for U in (universe(period), grids(period)):
+                for size in (3, 4):
+                    for parts in combinations(U, size):
+                        if any(max(p) % min(p) == 0
+                               for p in combinations(parts, 2)):
+                            continue
+                        checked += 1
+                        if not block_free(parts):
+                            continue
+                        L = 1
+                        for part in parts:
+                            L = _lcm(L, part)
+                        reciprocal = sum(Fraction(1, L // part)
+                                         for part in parts)
+                        self.assertGreater(reciprocal, 1, (period, parts))
+        self.assertGreater(checked, 1_000)
+
+    def test_the_fourth_part_is_free_at_462_and_the_triples_there_cost_one(self):
+        three = fee_frontier_by_blocks(462, reduced=False, arity=3)
+        four = fee_frontier_by_blocks(462, reduced=False, arity=4)
+        self.assertEqual(three["frontier"], 1)
+        self.assertEqual(four["frontier"], 0)
+        self.assertEqual(four["witness"], (42, 66, 154, 231))
+        self.assertEqual(three["universe_size"], 15)
+
+    def test_the_first_free_block_arrives_with_three_parts_and_not_with_four(self):
+        """The quadruple is not the first rung to reach zero: the triple is.
+
+        At ``60`` the cofactors of ``2, 3, 5`` are all even, so ``k = 0`` and a
+        defect of ``2`` already frees the block -- the same prime set that pays
+        ``1`` at ``30``, where ``15`` is odd and the defect is ``1``.
+        """
+        ladder = arity_ladder_census(max_period=500)
+        self.assertEqual(ladder["first_free"]["period"], 60)
+        self.assertEqual(ladder["first_free"]["parts"], 3)
+        self.assertEqual(ladder["first_free"]["witness"], (12, 20, 30))
+        self.assertEqual(fee_frontier_by_blocks(30, reduced=False,
+                                                arity=3)["frontier"], 1)
+
+    def test_the_ladder_earns_at_exactly_these_periods_up_to_1000(self):
+        ladder = arity_ladder_census(max_period=1000)
+        self.assertEqual(ladder["earnings"]["3->4"],
+                         (462, 546, 714, 798, 858, 924, 966))
+        self.assertEqual(ladder["earnings"]["4->5"], ())
+        self.assertEqual(ladder["first"]["2->3"]["witness"], (6, 10, 15))
+
+    def test_the_ladder_is_the_frontier_wherever_it_could_be_checked(self):
+        """``exhaustive_until=15`` is what reaches 462; 14 was one grid short."""
+        ladder = arity_ladder_census(max_period=500, exhaustive_until=15)
+        self.assertEqual(ladder["exhaustive"]["mismatches"], ())
+        self.assertGreater(ladder["exhaustive"]["verified"], 100)
+        short = arity_ladder_census(max_period=500, exhaustive_until=14)
+        self.assertEqual(short["exhaustive"]["mismatches"], ())
+
+    def test_over_the_carriers_no_period_reaches_zero(self):
+        """The other universe has a floor of one, and the census says so in words."""
+        ladder = arity_ladder_census(max_period=500, reduced=True)
+        self.assertIsNone(ladder["first_free"])
+        self.assertEqual(ladder["at_floor"], ())
+        self.assertIn("NO_PERIOD REACHES ZERO", ladder["verdict"])
+
+    def test_giugas_equation_is_one_defect_short_of_free(self):
+        """``delta = 1`` is Giuga, and one defect past it is a fee of zero."""
+        giuga = cofactor_block((2, 3, 7, 41))    # 1722 = sum of its cofactors + 1
+        past = cofactor_block((2, 3, 7, 11))     # 462, defect 31
+        short = cofactor_block((2, 3, 7, 43))    # primary pseudoperfect, defect -1
+        self.assertEqual(block_defect(giuga), 1)
+        self.assertEqual(block_fee(giuga), 1)
+        self.assertFalse(block_free(giuga))
+        self.assertEqual(block_defect(past), 31)
+        self.assertTrue(block_free(past))
+        self.assertEqual(block_defect(short), -1)
+        self.assertEqual(block_fee(short), 1)
+
+    def test_a_cofactor_block_needs_two_distinct_primes(self):
+        with self.assertRaises(ValueError):
+            cofactor_block((3,))
+        with self.assertRaises(ValueError):
+            cofactor_block((3, 3))
+        self.assertEqual(cofactor_block((2, 3, 5)), (6, 10, 15))
+
+    def test_the_command_reports_the_ladder_and_exits_clean(self):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = main(["arity-ladder", "--max-period", "500"])
+        self.assertEqual((rc, err.getvalue()), (0, ""))
+        self.assertIn("first free block", out.getvalue())
+        self.assertIn("(42, 66, 154, 231)", err.getvalue() + out.getvalue())
+
+    def test_json_carries_the_earnings_and_the_floor(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = main(["--json", "arity-ladder", "--max-period", "500"])
+        self.assertEqual(rc, 0)
+        payload = json.loads(out.getvalue())
+        self.assertEqual(payload["earnings"]["3->4"], [462])
+        self.assertEqual(payload["first_free"]["parts"], 3)
+        self.assertEqual(payload["universe"], "divisors")
+
+    def test_a_short_horizon_is_reported_as_not_measured(self):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = main(["arity-ladder", "--max-period", "8",
+                       "--exhaustive-until", "2"])
+        self.assertEqual(rc, 4)
+        self.assertIn("NO_MEDIDO", err.getvalue())
