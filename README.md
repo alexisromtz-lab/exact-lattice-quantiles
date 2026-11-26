@@ -1090,6 +1090,45 @@ the design above at `delta = 1/6` it reports `1/12` where the sections keep
 [tests/test_drift_budget.py](tests/test_drift_budget.py) pins the law, the round-trip,
 the gap, and the theorem that closes it.
 
+## A clinic is a period
+
+A chair offering 15, 20, 30, 45 and 60 minute services repeats its booking
+grammar every `lcm(15, 20, 30, 45, 60) = 180` minutes, and the candidate cadences
+of that grammar are the divisors of 180 above one — 17 of them. The lattice of
+`T = 180` **is** the lattice of that chair, so the arithmetic above answers a
+scheduling question with no scheduler in it:
+
+```
+$ PYTHONPATH=src python examples/clinic_period.py
+durations            15, 20, 30, 45, 60 minutes
+period               180 minutes  (lcm of the durations, 17 candidate cadences)
+instance ceiling     1/3 = 60 minute(s)  (critical divisor 6)
+cheapest design      47 points: cadences [12, 18, 20, 45]
+at the ceiling       64 points: cadences [4, 6, 10, 12, 15, 18, 20, 45]  ->  holds 1/3 = 60 minute(s)
+ladder of period 180
+     47 points -> margin 1/6 = 30 minute(s)
+     52 points -> margin 8/45 = 32 minute(s)
+     59 points -> margin 1/5 = 36 minute(s)
+     64 points -> margin 1/3 = 60 minute(s)
+service level        keep 1/30 = 6 minute(s) under a drift of 1/60 = 3 minute(s)
+  bought as          margin 1/20, 47 points, 5 shared sections
+  still keeps        17/180 = 17 minute(s)
+  ceiling check      keep + drift = 1/20 <= 1/3: True
+```
+
+Every number in that transcript is computed by
+[examples/clinic_period.py](examples/clinic_period.py) and pinned by
+[tests/test_examples.py](tests/test_examples.py); none is quoted by hand.
+
+Read it as a reading of the arithmetic, not as a shipped scheduler. What the
+library prices is the margin that survives a delay hitting *every* service at
+once — a late opening, a cleaning cycle running long — because that is the
+failure an average slot length cannot see: padding each service separately pays
+for the same delay once per service, and a shared buffer collapses the moment
+they all slip together. The clinic schedules itself; what it cannot compute by
+eye is where its own ceiling is, and `keep + drift <= 1/3` is that answer for a
+chair with those five lengths.
+
 ## Exactness
 
 Everything the library computes and returns is `int` or
@@ -1104,7 +1143,7 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 359 tests
+python -m unittest discover -s tests -t .     # 362 tests
 exact-lattice-quantiles --self-test           # 95 checks, RC 0
 ```
 
