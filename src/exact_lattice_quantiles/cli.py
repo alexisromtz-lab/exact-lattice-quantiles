@@ -35,7 +35,7 @@ from .lattice import TABLE_BUDGET, MaskTableTooLarge, mask_table, universe
 from .pricing import (antichain_saving_ceiling, band_slack, band_window,
                       block_catalogue,
                       block_dominance_census, block_of, block_saving,
-                      carrier_block_of, carrier_block_saving,
+                      carrier_block_of, carrier_block_saving, excess_parity,
                       exactness_frontier, odd_band_census, pair_antichain_of,
                       pair_antichain_saving, price_exact,
                       price_form_census, price_form_sweep, prime_excess,
@@ -394,6 +394,10 @@ def _print_sign_theorem(max_period: int, as_json: bool) -> int:
                "nothing left to prove"))
     print(line("band, sum 1/p above one", str(census["band"]),
                "measured only, the proof does not reach"))
+    print(line("law, periods with w >= 2", str(census["law_periods"]),
+               "excess and slack share their parity"))
+    print(line("  violations", str(len(census["law_violations"])),
+               "none: the law is an identity, not a census"))
     for row in census["band_rows"]:
         equation = "  Giuga equation" if row["band_equation"] else ""
         print(f"    {row['period']:>6}  sum 1/p = {row['reciprocal_sum']:<10}"
@@ -449,6 +453,23 @@ def _print_odd_band(max_omega: int, max_prime: int, slack: int | None,
             print(f"  {' '.join(str(p) for p in member['primes']):<34}"
                   f"{member['excess']:>8}  excess against slack "
                   f"{member['slack']}")
+        margin = census["margin"]
+        nearest = margin["nearest"]
+        if nearest is None:
+            print(line("nearest miss", "none", margin["verdict"]))
+        else:
+            print(line("nearest miss", str(nearest["excess"]),
+                       f"clears the band by {nearest['distance']} at "
+                       f"omega = {nearest['omega']}"))
+            print(f"  {' '.join(str(p) for p in nearest['primes']):<34}"
+                  f"{nearest['excess']:>8}  the closest approach from above")
+            for key, row in margin["by_omega"].items():
+                print(f"  omega {key:<3}{'':<26}{row['excess']:>8}  by "
+                      f"{row['distance']} over {row['threshold']}")
+        parity = census["parity"]
+        print(line("parity of the excess", "consistent" if parity["consistent"]
+                   else "BROKEN", parity["rule"]))
+        print(f"  corner: {parity['corner']}")
         print(f"  boundary: {census['boundary']}")
         print(f"  verdict: {census['verdict']}")
     if census["status"] == "below-floor":
@@ -685,6 +706,19 @@ def _self_test() -> int:
           (walked["candidates"], walked["prefixes"] > 0), ([], True))
     check("the same walk finds members the moment the threshold is lifted",
           len(odd_band_census(9, 30, slack=10**9)["candidates"]) > 0, True)
+    check("the excess and the slack always share their parity",
+          {(prime_excess(n) - band_slack(n)) % 2
+           for n in range(6, 600) if len(primes_of(n)) >= 2}, {0})
+    check("so 858 carries an odd excess and 36 an even one",
+          (excess_parity(858), excess_parity(36)), (1, 0))
+    check("and an odd period walks only the excesses its omega allows",
+          {excess_parity(n) == (len(primes_of(n)) - 1) % 2
+           for n in range(3, 600, 2) if len(primes_of(n)) >= 2}, {True})
+    nearest = walked["margin"]["nearest"]
+    check("the walk reports its nearest miss, not just its silence",
+          nearest["excess"] > nearest["threshold"], True)
+    check("and that miss sits where the congruence says it must",
+          walked["parity"]["consistent"], True)
     universes = reciprocal_filter_census(400)
     check("every period below one is clean in both universes, not just one",
           (universes["proved"], universes["proved_without_break"]),

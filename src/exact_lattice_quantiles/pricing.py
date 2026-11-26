@@ -408,7 +408,8 @@ def band_slack(n: int) -> int:
     even), and ``omega - 1`` for an odd period, where every entry is odd.
 
     So the band is not an unexplained residue; it is the region
-    ``1 <= prime_excess(n) <= band_slack(n)`` of one integer predicate.
+    ``1 <= prime_excess(n) <= band_slack(n)`` of one integer predicate.  See
+    :func:`excess_parity` for why the division above needs no floors.
 
     The value is read from the primes and not from the block, because a prime
     period has an empty block (there is nothing to drop) and would report a
@@ -431,6 +432,41 @@ def prime_excess(n: int) -> int:
     ``omega == 9`` on, where the first witness already exceeds ``10**8``.
     """
     return sum(n // p for p in primes_of(n)) - n
+
+
+def excess_parity(n: int) -> int:
+    """The parity the excess cannot escape: ``prime_excess(n) === band_slack(n)`` mod 2.
+
+    Every term of ``M = sum(n // p) - n`` is congruent to its own parity modulo
+    two, so ``M === #(p : n // p odd) - [n odd] (mod 2)``.  That count is how
+    :func:`band_slack` is *defined* -- ``odd_members`` minus the period's own
+    parity -- so the congruence is an identity and not a measurement:
+
+        M === odd_entries - [n odd] === slack    (mod 2)
+
+    What it buys, in one line each:
+
+    * ``block_saving(n) == (M - slack) // 2`` is an *exact* division for every
+      period with at least two distinct primes, because ``M - slack`` is even by
+      this congruence: the two roundings of the charges cancel by construction
+      and not by census.
+    * ``slack == 0`` (``4`` divides ``n``) empties the band ``1 <= M <= 0``
+      because ``M`` is even there -- not a separate fact.
+    * ``slack == 1`` (exactly one factor ``2``) forces ``M`` odd, and the band is
+      then the single point ``M == 1``: the even half of the band *is* the Giuga
+      equation ``sum(1/p) - prod(1/p) == 1``.
+    * ``slack == omega - 1`` (odd ``n``) forces ``M === omega - 1 (mod 2)``, so
+      ``M == 1`` needs ``omega`` even.  An odd Giuga number would have an even
+      number of prime factors, and the window's corner is not Giuga's corner at
+      odd ``omega``.
+
+    A prime period has ``omega == 1`` and an empty block, where the law does not
+    apply -- ``block_saving`` is zero while ``M - slack`` is not -- so this raises
+    instead of handing back a parity the law cannot use.
+    """
+    if len(primes_of(n)) < 2:
+        raise ValueError(f"n must have at least two distinct primes, got {n}")
+    return (odd_members(n) - (n % 2)) % 2
 
 
 def band_window(product: int, excess: int, threshold: int) -> tuple[int, int]:
@@ -823,8 +859,22 @@ def odd_band_census(max_omega: int = 11, max_prime: int = 150,
 
     The boundary is named rather than hidden: ``M == 1`` on an odd period *is*
     an odd Giuga number, ``sum(1/p) - prod(1/p) == 1``, open since 1950 -- no
-    horizon settles that corner.  What is settled is that the window is entered
-    through ``M == 1`` only and that nothing below the horizon enters it.
+    horizon settles that corner.  :func:`excess_parity` narrows it: the excess of
+    an odd period is congruent to ``omega - 1`` modulo two, so the corner sits at
+    even ``omega``, and at odd ``omega`` the band is walked on even excesses
+    only.  The rest of the band -- ``2 <= M <= omega - 1`` -- is a different
+    equation, and nothing below the horizon enters either of them.
+
+    What the walk returns is not only "no members".  ``margin`` carries the
+    nearest miss -- the smallest positive excess it saw, with the primes that
+    produce it, per ``omega`` -- so an empty answer is a distance with a witness
+    and not a silence, and ``parity`` re-checks the congruence on every one of
+    those misses.  That miss is the nearest over the whole horizon and not just
+    over the prefixes walked: a set with a positive excess has every superset
+    further above one (each prime multiplies the excess and adds the product),
+    so the least positive excess sits on a set whose proper subsets are all
+    non-positive -- and such a set is a one-prime extension of a negative
+    prefix, which is exactly what the walk prices.
 
     ``slack`` replaces the per-member threshold ``omega - 1`` with a constant
     one.  That is how the instrument is shown not to be blind: with the
@@ -844,7 +894,31 @@ def odd_band_census(max_omega: int = 11, max_prime: int = 150,
         suffix[i] = suffix[i + 1] + Fraction(1, odd[i])
     bounds = [(s.numerator, s.denominator) for s in suffix]
     members: list[dict] = []
+    nearest: tuple[int, tuple[int, ...], int, int] | None = None
+    closest: dict[int, tuple[int, tuple[int, ...], int, int]] = {}
     prefixes = 0
+
+    def note(omega: int, chosen: tuple[int, ...], prime: int, member: int,
+             edge: int) -> None:
+        """Record how far above the band this prefix's nearest extension lands.
+
+        ``member`` falls as the prime rises, so the *last* positive extension of
+        a prefix is its closest approach from above -- one row per prefix, no
+        per-prime bookkeeping.  The members say where the band is entered; this
+        says how close it is never entered, which turns "no members" from an
+        empty answer into a distance with a witness.
+        """
+        nonlocal nearest
+        seen = closest.get(omega)
+        improves_global = nearest is None or member < nearest[0]
+        improves_omega = seen is None or member < seen[0]
+        if not (improves_global or improves_omega):
+            return
+        primes = (*chosen, prime)
+        if improves_global:
+            nearest = (member, primes, omega, edge)
+        if improves_omega:
+            closest[omega] = (member, primes, omega, edge)
 
     def walk(start: int, chosen: tuple[int, ...], product: int, excess: int) -> None:
         nonlocal prefixes
@@ -853,21 +927,30 @@ def odd_band_census(max_omega: int = 11, max_prime: int = 150,
         if -excess * denominator >= numerator * product:
             return  # the reachable reciprocals cannot lift the sum above one
         threshold = threshold_of(len(chosen) + 1)
+        omega = len(chosen) + 1
+        pending: tuple[int, int] | None = None
         for i in range(start, len(odd)):
             prime = odd[i]
             member = prime * excess + product
-            if member > threshold:
-                continue  # member falls with the prime, so a later one may fit
             if member >= 1:
-                members.append({
-                    "primes": [*chosen, prime],
-                    "omega": len(chosen) + 1,
-                    "product": product * prime,
-                    "excess": member,
-                    "slack": len(chosen),
-                })
-            elif len(chosen) + 1 < max_omega:
+                if member <= threshold:
+                    members.append({
+                        "primes": [*chosen, prime],
+                        "omega": omega,
+                        "product": product * prime,
+                        "excess": member,
+                        "slack": len(chosen),
+                    })
+                else:
+                    pending = (prime, member)
+                continue
+            if pending is not None:
+                note(omega, chosen, pending[0], pending[1], threshold)
+                pending = None
+            if omega < max_omega:
                 walk(i + 1, (*chosen, prime), product * prime, member)
+        if pending is not None:
+            note(omega, chosen, pending[0], pending[1], threshold)
 
     walk(0, (), 1, -1)
     if below_floor:
@@ -880,6 +963,25 @@ def odd_band_census(max_omega: int = 11, max_prime: int = 150,
     else:
         verdict = (f"no odd period in the band over {prefixes} prefixes: at "
                    f"most {max_omega} odd primes, each at most {max_prime}")
+    if nearest is None:
+        margin = {"nearest": None, "by_omega": {},
+                  "verdict": "the walk never produced a positive excess, so "
+                             "there is no distance to report"}
+    else:
+        def row_of(entry: tuple[int, tuple[int, ...], int, int]) -> dict:
+            member, primes, omega, edge = entry
+            return {"primes": list(primes), "omega": omega, "excess": member,
+                    "threshold": edge, "distance": member - edge}
+
+        margin = {
+            "nearest": row_of(nearest),
+            "by_omega": {str(omega): row_of(entry)
+                         for omega, entry in sorted(closest.items())},
+            "verdict": f"the nearest miss clears the band by "
+                       f"{nearest[0] - nearest[3]} at omega = {nearest[2]} "
+                       f"{nearest[1]}, excess {nearest[0]} against a threshold "
+                       f"of {nearest[3]}",
+        }
     return {
         "max_omega": max_omega,
         "max_prime": max_prime,
@@ -889,8 +991,18 @@ def odd_band_census(max_omega: int = 11, max_prime: int = 150,
         "candidates": members,
         "status": "below-floor" if below_floor else "measured",
         "floor": floor_row,
-        "boundary": ("an odd member with excess 1 is an odd Giuga number, "
-                     "sum(1/p) - prod(1/p) = 1, open since 1950"),
+        "margin": margin,
+        "parity": {
+            "rule": "for an odd period, prime_excess(n) === omega - 1 (mod 2)",
+            "corner": "an excess of 1 would be an odd Giuga number, and the "
+                      "congruence puts that corner at even omega only: it is "
+                      "unreachable at odd omega",
+            "consistent": all((entry[0] - (omega - 1)) % 2 == 0
+                              for omega, entry in closest.items()),
+        },
+        "boundary": ("an odd member with excess 1 would be an odd Giuga number, "
+                     "sum(1/p) - prod(1/p) = 1, open since 1950 -- and the "
+                     "parity of the excess puts that corner at even omega"),
         "verdict": verdict,
     }
 
@@ -995,17 +1107,33 @@ def sign_theorem_census(limit: int = 2000) -> dict:
     exhaustive ceiling of :func:`antichain_saving_ceiling` against the
     theorem's zero -- and reports the band on its own, because the band is the
     one place where the proof does not reach and a measurement is all there is.
+
+    *The law is a congruence, not a census.*  :func:`excess_parity` shows that
+    ``prime_excess(n)`` and ``band_slack(n)`` share their parity for every period
+    with two distinct primes, so ``(excess - slack) // 2`` divides exactly and
+    the three regimes really are one predicate.  The census re-derives the
+    congruence on every period it visits, which makes it a check of a proof
+    rather than the proof itself -- the same shape as the lemma: proved once,
+    re-measured everywhere.
     """
     if limit < 2:
         raise ValueError(f"limit must be at least 2, got {limit}")
     proven = band = block_saves = tight = 0
+    law_periods = 0
     band_rows: list[dict] = []
     lemma_violations: list[dict] = []
     sign_violations: list[dict] = []
+    law_violations: list[dict] = []
     mismatches: list[dict] = []
     for period in range(2, limit + 1):
         row = sign_regime(period)
         regime = row["regime"]
+        if len(row["primes"]) >= 2:
+            law_periods += 1
+            if (row["excess_integer"] - row["slack"]) % 2:
+                law_violations.append({"period": period,
+                                       "excess": row["excess_integer"],
+                                       "slack": row["slack"]})
         if regime == "block-saves":
             block_saves += 1
             continue
@@ -1048,6 +1176,14 @@ def sign_theorem_census(limit: int = 2000) -> dict:
         "lemma_violations": lemma_violations,
         "sign_violations": sign_violations,
         "characterisation_mismatches": mismatches,
+        "law_periods": law_periods,
+        "law_violations": law_violations,
+        "law": "prime_excess(n) === band_slack(n) (mod 2), an identity, so "
+               "block_saving = (excess - slack) // 2 divides exactly",
+        "law_verdict": "the unified law is a congruence and holds on every "
+                       "period of this census"
+                       if not law_violations
+                       else "the congruence failed, so the law needs floors",
         "lemma": "sum(1/p) <= 1 implies sum(1/c) <= sum(1/p) over antichains "
                  "of period-smooth integers above one",
         "verdict": "the sign reading is proved where the reciprocal sum is at "
