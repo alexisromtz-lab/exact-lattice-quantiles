@@ -43,8 +43,8 @@ from .coverage import (DesignLaw, DriftLaw, best_probes, cover_masks,
                        guaranteed_margin, margin_ladder, margin_under_drift,
                        minimum_cost_design, minimum_probes, witness_margin)
 from .lattice import (TABLE_BUDGET, MaskTableTooLarge, carriers, cell_intervals,
-                      cell_width, cell_widths, grids, mask_table, seats,
-                      universe, universe_from_factorization, widths)
+                      cell_width, cell_widths, grids, mask_table, period_of,
+                      seats, universe, universe_from_factorization, widths)
 from .pricing import (PriceFormCensus, antichain_saving_ceiling,
                       best_block_saving, block_advantage, block_catalogue,
                       block_dominance_census, block_of, block_saving,
@@ -64,7 +64,7 @@ from .solve import (OK, PROBES_INSUFFICIENT, UNDERCOVERED,
                     InfeasibleWithinBudget, Schedule, ladder,
                     solve_lattice_schedule)
 
-__version__ = "0.16.0"
+__version__ = "0.17.0"
 
 __all__ = [
     "Ceiling",
@@ -137,6 +137,7 @@ __all__ = [
     "margin_ladder",
     "mass",
     "maximal_divisors",
+    "period_of",
     "minimum_cost_design",
     "minimum_probes",
     "price_exact",

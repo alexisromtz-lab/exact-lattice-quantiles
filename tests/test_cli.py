@@ -9,7 +9,7 @@ import unittest
 from fractions import Fraction
 
 from exact_lattice_quantiles import TABLE_BUDGET
-from exact_lattice_quantiles.cli import main
+from exact_lattice_quantiles.cli import RC_BAD_REQUEST, main
 
 
 def run(*argv: str) -> tuple[int, str]:
@@ -166,6 +166,45 @@ class TestBeyondTableBudget(unittest.TestCase):
         self.assertEqual(payload["budget"], TABLE_BUDGET)
         self.assertEqual(payload["cells"], 2 << 33)
         self.assertEqual(payload["site"], "the set-cover DP")
+
+
+class TestPeriod(unittest.TestCase):
+    """From the lengths somebody actually runs to the lattice that prices them."""
+
+    def test_the_clinic_period_is_180(self):
+        rc, out = run("period", "15", "20", "30", "45", "60")
+        self.assertEqual(rc, 0)
+        self.assertIn("period            180  (lcm of the durations)", out)
+        self.assertIn("grids             17 divisors of 180 above one", out)
+        self.assertIn("universe U(T)     12 carriers of the even grids", out)
+        self.assertIn("ceiling nu(T)     1/3  = 60 of the period", out)
+
+    def test_the_period_is_the_least_common_multiple(self):
+        rc, out = run("period", "12", "18")
+        self.assertEqual(rc, 0)
+        self.assertIn("period            36", out)
+
+    def test_an_odd_period_is_refused_by_name(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            rc, out = run("period", "7", "15")
+        self.assertEqual(rc, RC_BAD_REQUEST)
+        self.assertEqual(out, "")
+        self.assertIn("is odd", err.getvalue())
+
+    def test_a_zero_duration_is_a_malformed_request_not_an_answer(self):
+        rc, out = run("period", "0")
+        self.assertEqual(rc, RC_BAD_REQUEST)
+
+    def test_json_reports_both_the_grids_and_the_universe(self):
+        rc, out = run("--json", "period", "15", "20", "30", "45", "60")
+        self.assertEqual(rc, 0)
+        payload = json.loads(out)
+        self.assertEqual(payload["period"], 180)
+        self.assertEqual(payload["grids"], 17)
+        self.assertEqual(payload["universe"], 12)
+        self.assertEqual(payload["margin"], "1/3")
+        self.assertEqual(payload["ceiling_in_units"], "60")
 
 
 class TestPlan(unittest.TestCase):

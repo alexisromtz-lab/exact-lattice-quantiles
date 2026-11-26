@@ -191,6 +191,27 @@ def carriers(M: int) -> tuple[int, ...]:
     return (carrier,)
 
 
+def period_of(durations: tuple[int, ...] | list[int]) -> int:
+    """The period a set of service lengths generates: their least common multiple.
+
+    A system whose lengths are ``15, 20, 30, 45, 60`` does not repeat every 15
+    or every 60 units -- it repeats every 180, and the candidate cadences of
+    that repetition are the divisors of 180 above one.  So the period is the
+    single number that turns a schedule somebody already runs into the lattice
+    the rest of this package prices, and the ceiling ``nu(T)`` is then a
+    property of *their* system rather than of a period picked by example.
+
+    The lengths are a property of the instance, so a non-positive one is a
+    request defect and not an infeasibility: ``ValueError``, never a number.
+    """
+    period = 1
+    for d in durations:
+        if d < 1:
+            raise ValueError(f"a duration must be a positive number of units: {d}")
+        period = period * d // math.gcd(period, d)
+    return period
+
+
 @lru_cache(maxsize=None)
 def universe_from_factorization(period: int) -> tuple[int, ...]:
     """``U(T)`` read from the factorization, without building any grid.

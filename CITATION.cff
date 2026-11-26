@@ -13,7 +13,10 @@ abstract: >-
   drift is priced in the same currency -- keeping v under a drift of d costs
   exactly what keeping v + d costs with none -- and the reach a design has above
   its witness margin is proved unspendable, so a service level is one purchase
-  and the drift is paid out of the instance ceiling.
+  and the drift is paid out of the instance ceiling. A set of service lengths
+  generates a period -- their least common multiple -- so a schedule already in
+  production can be priced on its own lattice instead of a period chosen by
+  example.
 authors:
   - family-names: "Roman"
     given-names: "Alexis"
@@ -28,5 +31,5 @@ keywords:
   - multi-rate scheduling
   - phase margin
   - rational arithmetic
-version: 0.16.0
+version: 0.17.0
 date-released: "2026-11-26"

@@ -41,9 +41,11 @@ Python 3.11+. No dependencies, at runtime or for tests.
 
 ```python
 from fractions import Fraction
-from exact_lattice_quantiles import instance_ceiling, solve_lattice_schedule
+from exact_lattice_quantiles import (instance_ceiling, period_of,
+                                     solve_lattice_schedule)
 
 instance_ceiling(180).margin          # Fraction(1, 3)  — tied by divisor 6
+period_of((15, 20, 30, 45, 60))       # 180 — the period the lengths generate
 instance_ceiling(360).margin          # Fraction(4, 15) — tied by divisor 90
 
 schedule = solve_lattice_schedule(180, max_cost=64, k_probes=4, min_margin="1/3")
@@ -58,6 +60,7 @@ solve_lattice_schedule(180, max_cost=64, k_probes=4, min_margin="2/5")
 Or from the shell:
 
 ```
+$ exact-lattice-quantiles period 15 20 30 45 60   # which period a clinic runs over
 $ exact-lattice-quantiles ceiling 180
 $ exact-lattice-quantiles solve 180 --max-cost 64 --probes 4 --min-margin 1/3
 $ exact-lattice-quantiles ladder 180
@@ -976,7 +979,7 @@ pins the design half.
 ## Drift is not a second budget
 
 The price above is paid in one currency. A design that holds a margin `v` under
-a common drift `delta` is quoted as one number, `v + delta`, and 0.16.0 reads
+a common drift `delta` is quoted as one number, `v + delta`, and 0.17.0 reads
 the exchange in both directions:
 
 ```python
@@ -1116,6 +1119,25 @@ service level        keep 1/30 = 6 minute(s) under a drift of 1/60 = 3 minute(s)
   ceiling check      keep + drift = 1/20 <= 1/3: True
 ```
 
+The same bridge from a schedule to a period is one command, so the ceiling can
+be asked for the lengths a system actually runs:
+
+```
+$ exact-lattice-quantiles period 15 20 30 45 60
+durations         15, 20, 30, 45, 60
+period            180  (lcm of the durations)
+grids             17 divisors of 180 above one
+universe U(T)     12 carriers of the even grids
+ceiling nu(T)     1/3  = 60 of the period
+critical divisor  6
+radical bound hit False
+services per period  15: 12, 20: 9, 30: 6, 45: 4, 60: 3
+```
+
+An odd period is refused by name rather than answered: every divisor of an odd
+`T` is odd, so `U(T)` is empty and there is no ceiling to report — `rc 3`, never
+a number. That is the same boundary `ceiling` already keeps.
+
 Every number in that transcript is computed by
 [examples/clinic_period.py](examples/clinic_period.py) and pinned by
 [tests/test_examples.py](tests/test_examples.py); none is quoted by hand.
@@ -1143,8 +1165,8 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 362 tests
-exact-lattice-quantiles --self-test           # 95 checks, RC 0
+python -m unittest discover -s tests -t .     # 370 tests
+exact-lattice-quantiles --self-test           # 97 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,

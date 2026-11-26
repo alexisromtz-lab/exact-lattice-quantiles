@@ -34,7 +34,7 @@ from .coverage import (coverage_census, coverage_kernel, design_law, drift_law,
                        witness_margin)
 from .arithmetic import primes_of
 from .lattice import (TABLE_BUDGET, MaskTableTooLarge, cell_widths,
-                      grids, mask_table, universe)
+                      grids, mask_table, period_of, universe)
 from .pricing import (antichain_saving_ceiling, band_slack, band_window,
                       block_catalogue,
                       block_advantage, block_dominance_census, block_of,
@@ -94,6 +94,46 @@ def _print_ceiling(period: int, as_json: bool) -> int:
     print(f"radical bound hit {c.radical_bound_hit}")
     print(f"by product        {ceiling_by_product(period)}")
     print(f"by scan           {ceiling_by_scan(period)}")
+    return RC_OK
+
+
+def _print_period_of(durations: list[int], as_json: bool) -> int:
+    """The period a set of service lengths generates, and its exact ceiling.
+
+    A system whose lengths are ``d1 ... dn`` repeats only every
+    ``lcm(d1 ... dn)``, and its cadences are the divisors of that period above
+    one.  This is the one step between a schedule somebody already runs and the
+    lattice the rest of the commands price.
+    """
+    if not durations or any(d < 1 for d in durations):
+        print("period: one or more positive durations are required",
+              file=sys.stderr)
+        return RC_BAD_REQUEST
+    period = period_of(durations)
+    c = instance_ceiling(period)
+    per_period = {d: period // d for d in durations}
+    if as_json:
+        print(json.dumps({
+            "durations": list(durations),
+            "period": period,
+            "grids": len(grids(period)),
+            "universe": len(c.universe),
+            "margin": str(c.margin),
+            "critical_divisor": c.critical_divisor,
+            "radical_bound_hit": c.radical_bound_hit,
+            "ceiling_in_units": str(c.margin * period),
+            "services_per_period": {str(k): v for k, v in per_period.items()},
+        }, indent=2, sort_keys=True))
+        return RC_OK
+    print(f"durations         {', '.join(str(d) for d in durations)}")
+    print(f"period            {period}  (lcm of the durations)")
+    print(f"grids             {len(grids(period))} divisors of {period} above one")
+    print(f"universe U(T)     {len(c.universe)} carriers of the even grids")
+    print(f"ceiling nu(T)     {c.margin}  = {c.margin * period} of the period")
+    print(f"critical divisor  {c.critical_divisor}")
+    print(f"radical bound hit {c.radical_bound_hit}")
+    print("services per period  "
+          + ", ".join(f"{d}: {n}" for d, n in per_period.items()))
     return RC_OK
 
 
@@ -790,6 +830,10 @@ def _self_test() -> int:
     check("paths agree at 180", ceiling_by_product(180), ceiling_by_scan(180))
     check("nu(360) = 4/15", instance_ceiling(360).margin, Fraction(4, 15))
     check("nu(252) = 2/7", instance_ceiling(252).margin, Fraction(2, 7))
+    clinic = period_of((15, 20, 30, 45, 60))
+    check("a clinic of 15/20/30/45/60 runs over period 180", clinic, 180)
+    check("its ceiling is the ceiling of 180, not of 60",
+          instance_ceiling(clinic).margin, Fraction(1, 3))
     try:
         solve_lattice_schedule(180, max_cost=10**6, k_probes=4,
                                min_margin=Fraction(2, 5))
@@ -1080,6 +1124,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="check the claims the package makes and exit")
     sub = parser.add_subparsers(dest="command")
 
+    p_period = sub.add_parser("period",
+                              help="the period a set of service lengths generates")
+    p_period.add_argument("durations", type=int, nargs="+")
+
     p_ceiling = sub.add_parser("ceiling", help="the exact ceiling of one period")
     p_ceiling.add_argument("period", type=int)
 
@@ -1217,6 +1265,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return RC_BAD_REQUEST
     try:
+        if args.command == "period":
+            return _print_period_of(args.durations, args.json)
         if args.command == "ceiling":
             return _print_ceiling(args.period, args.json)
         if args.command == "solve":

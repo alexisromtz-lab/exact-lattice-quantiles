@@ -14,7 +14,7 @@ from exact_lattice_quantiles import (best_probes, covered_divisors,
                                      minimum_probes, universe, witness_margin)
 from exact_lattice_quantiles.coverage import coverage_census
 from exact_lattice_quantiles.lattice import (cell_intervals, cell_width,
-                                             cell_widths)
+                                             cell_widths, period_of)
 
 PAIRS = ((12, 18, 20, 45), (4, 6, 10, 12, 15, 18, 20, 45))
 COSTAR, COST64 = 47, 64
@@ -266,3 +266,28 @@ class TestCensus(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PeriodOfTest(unittest.TestCase):
+    """The period of a schedule is the lcm of its lengths, not their sum nor max.
+
+    The distinction is the whole reason a clinic with 15, 20, 30, 45 and 60
+    minute services is priced at ``T = 180``: the largest length is a third of
+    the period, so pricing it at 60 would read a ceiling three times too high.
+    """
+
+    def test_the_clinic_period(self):
+        self.assertEqual(period_of((15, 20, 30, 45, 60)), 180)
+        self.assertEqual(period_of([15, 20]), 60)
+        self.assertEqual(period_of((7,)), 7)
+        self.assertEqual(period_of(()), 1)
+
+    def test_it_is_not_the_largest_length(self):
+        self.assertEqual(period_of((12, 18)), 36)
+        self.assertNotEqual(period_of((12, 18)), 18)
+
+    def test_a_non_positive_length_is_a_defect(self):
+        with self.assertRaises(ValueError):
+            period_of((0, 5))
+        with self.assertRaises(ValueError):
+            period_of((15, -20))
