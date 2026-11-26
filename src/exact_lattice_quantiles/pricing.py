@@ -1047,7 +1047,8 @@ def worst_antichain_weight(period: int) -> tuple[int, tuple[int, ...]]:
     is the *heaviest* antichain, and a period whose block saves nothing has no
     saving antichain at all.  :func:`sign_theorem_census` reports where the
     maximum meets that bound, which is the sharpness of the inequality and not
-    an accident of the search.
+    an accident of the search.  :func:`heaviest_antichain` is the same maximum
+    read against that bound one period at a time, with the warrant attached.
     """
     if period < 2:
         raise ValueError(f"period must be at least 2, got {period}")
@@ -1074,6 +1075,161 @@ def worst_antichain_weight(period: int) -> tuple[int, tuple[int, ...]]:
 
     walk(0, [], 1, 0)
     return best[0], best[1]
+
+
+def heaviest_antichain(period: int) -> dict:
+    """The heaviest antichain of ``period``, read against the block's own weight.
+
+    The drop-one block ``{period / p}`` is an antichain whose least common
+    multiple is ``period``, and its weight is ``sum(period / p)``.  So that
+    number is a *lower* bound on the maximum for every period -- the block is
+    always a candidate -- and the lemma of :func:`sign_theorem_census` supplies
+    the upper bound exactly where ``sum(1/p) <= 1``.  Two lines, and the
+    inequality in the docstring of :func:`worst_antichain_weight` becomes an
+    equality:
+
+        max sum(a)  ==  sum(period / p)   for every period with sum(1/p) <= 1,
+
+    attained by the block and by nothing heavier.  That is the extremal reading
+    of the lemma, and it is what the closed form needs: with the maximum equal
+    to the block's weight, "no antichain saves where no block does" is not a
+    search that came out empty, it is an identity.
+
+    The band is the one region where the upper bound is not proved, so there the
+    equality is a *measurement* and this function labels it as such.  What it
+    measures there is the tightest form of the sign reading.  A saving needs
+    ``weight >= period + slack + 2`` while the block weighs ``period + m`` with
+    ``m = prime_excess(period)``, so
+
+        miss = slack - m + 2,
+
+    which is ``2`` exactly when ``m == slack`` -- the top of the band, the last
+    value that still saves nothing.  ``weight`` and ``period + slack`` share a
+    parity, so no antichain can miss by less than two points, and two points of
+    weight *is* one unit of saving: the tightest band member is one saving away
+    and cannot be closer.  ``miss`` is non-positive exactly when the block
+    already saves, i.e. exactly outside the band.
+
+    That makes the band's two instruments one statement: ``m == slack`` is the
+    condition for tightness here and the threshold :func:`odd_band_census`
+    searches for, so an empty odd band is also the statement that no odd period
+    is anywhere near one unit of saving.
+
+    And the equality is not a theorem about all periods: at ``176`` primes the
+    pair family weighs more than the block, as :func:`strong_lemma_frontier`
+    refutes with exact integers.  So the warrant is per region and the region is
+    part of the answer -- a gap of zero measured here is not a claim about a
+    period with a hundred and seventy-six prime factors.
+    """
+    primes = primes_of(period)
+    if len(primes) < 2:
+        raise ValueError(f"period must have at least two distinct primes, "
+                         f"got {period}")
+    weight, witness = worst_antichain_weight(period)
+    excess = prime_excess(period)
+    bound = period + excess
+    drop = tuple(sorted((period // p for p in primes), reverse=True))
+    regime = sign_regime(period)["regime"]
+    slack = band_slack(period)
+    miss = slack - excess + 2
+    return {
+        "period": period,
+        "primes": list(primes),
+        "regime": regime,
+        "warrant": "theorem" if regime == "proven-zero" else "measured",
+        "excess": excess,
+        "bound": bound,
+        "weight": weight,
+        "gap": bound - weight,
+        "witness": list(witness),
+        "drop_one": list(drop),
+        "block_attains": tuple(witness) == drop,
+        "slack": slack,
+        "miss": miss,
+        "tightest_miss": miss == 2,
+    }
+
+
+def extremal_census(limit: int = 2000) -> dict:
+    """The extremal reading over a population, with the warrant of each region.
+
+    Three regions, three warrants, one number -- ``gap = sum(period / p) -
+    max sum(a)``:
+
+        region          gap      warrant
+        proven-zero      0       theorem: the block attains the bound and the
+                                 lemma bounds every antichain
+        block-saves      0       measured: the proof does not reach here
+        band             0       measured: and `miss = slack - m + 2` is a
+                                 minimum only at `m == slack`, so a band member
+                                 is tight iff it sits at the top of the window
+
+    A negative gap is the only outcome that refutes the package: the block would
+    not be the heaviest antichain, an antichain could save where the block saves
+    nothing, and the sign reading would fall.  That is what this census reports
+    as a violation, and it is the code it returns.
+
+    Measured below ``200 000`` (``181 879`` periods, ``173 537`` proved, ``8 338``
+    block-saves, ``4`` band members: ``30``, ``858``, ``1722``, ``66198`` -- the
+    four Giuga numbers below ``200 000``): the gap is zero on every one of them
+    and the heaviest antichain is the drop-one block on every one of them.
+
+    The horizon is declared and not implied.  The equality is *false* in general
+    -- see :func:`strong_lemma_frontier`, where the pairs outweigh the block from
+    ``176`` primes on -- so this census measures a region and names it; it does
+    not certify the whole family of periods, which no finite population could.
+    """
+    if limit < 6:
+        raise ValueError(f"limit must be at least 6, got {limit}")
+    regions: dict[str, dict] = {}
+    band_rows: list[dict] = []
+    violations: list[dict] = []
+    tightest: dict | None = None
+    periods = 0
+    for period in range(2, limit + 1):
+        if len(primes_of(period)) < 2:
+            continue
+        row = heaviest_antichain(period)
+        periods += 1
+        bucket = regions.setdefault(row["regime"], {
+            "rows": 0, "gap_zero": 0, "block_attains": 0,
+            "tightest_miss": 0, "warrant": row["warrant"], "max_gap": None,
+        })
+        bucket["rows"] += 1
+        bucket["gap_zero"] += row["gap"] == 0
+        bucket["block_attains"] += row["block_attains"]
+        bucket["tightest_miss"] += row["tightest_miss"]
+        if bucket["max_gap"] is None or row["gap"] > bucket["max_gap"]:
+            bucket["max_gap"] = row["gap"]
+        if row["gap"] < 0:
+            violations.append(row)
+        if row["regime"] != "block-saves" and (
+                tightest is None or (row["miss"], row["period"]) < (
+                    tightest["miss"], tightest["period"])):
+            tightest = row
+        if row["regime"] == "band":
+            band_rows.append(row)
+    attained = sum(bucket["block_attains"] for bucket in regions.values())
+    return {
+        "limit": limit,
+        "periods": periods,
+        "regions": {name: dict(row) for name, row in sorted(regions.items())},
+        "band_rows": band_rows,
+        "violations": violations,
+        "tightest": tightest,
+        "block_attains_everywhere": attained == periods,
+        "theorem": "max sum(a) == sum(period / p) for every period with "
+                   "sum(1/p) <= 1, attained by the drop-one block",
+        "frontier": "sum(period / p) is not an upper bound in general: the pair "
+                    "family outweighs the block from 176 primes on, largest "
+                    "1049 (strong_lemma_frontier)",
+        "verdict": "the block is the heaviest antichain wherever the gap is zero, "
+                   "by theorem where the reciprocal sum is at most one and by "
+                   "measurement elsewhere in this population"
+                   if not violations else
+                   "an antichain outweighs the block, so the block is not the "
+                   "heaviest: the sign reading falls",
+    }
 
 
 def sign_theorem_census(limit: int = 2000) -> dict:

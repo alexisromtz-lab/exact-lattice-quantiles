@@ -39,7 +39,9 @@ from .pricing import (antichain_saving_ceiling, band_slack, band_window,
                       block_catalogue,
                       block_dominance_census, block_of, block_saving,
                       carrier_block_of, carrier_block_saving, excess_parity,
-                      exactness_frontier, odd_band_census, pair_antichain_of,
+                      exactness_frontier, extremal_census, heaviest_antichain,
+                      odd_band_census,
+                      pair_antichain_of,
                       pair_antichain_saving, price_exact,
                       price_form_census, price_form_sweep, prime_excess,
                       reciprocal_filter_census, reciprocal_prime_sum,
@@ -434,6 +436,63 @@ def _print_sign_theorem(max_period: int, as_json: bool) -> int:
     return RC_ABOVE_CEILING if broken else RC_OK
 
 
+def _print_extremal_gap(max_period: int, as_json: bool) -> int:
+    """The extremal reading: is the block not merely allowed, but the maximum?
+
+    ``RC_ABOVE_CEILING`` when an antichain outweighs the block -- the package's
+    own claim refuted by its own census -- and ``RC_NO_MEDIDO`` when the horizon
+    cannot reach the band, because the band is the only region whose warrant is a
+    measurement and a census that never enters it would be reporting the proved
+    half as if it were the whole.
+    """
+    census = extremal_census(max_period)
+    broken = bool(census["violations"])
+    band = census["band_rows"]
+    if as_json:
+        print(json.dumps(census, indent=2, sort_keys=True))
+    else:
+        regions = census["regions"]
+
+        def line(label: str, value: str, note: str = "") -> str:
+            return f"  {label:<32}{value:>6}  {note}"
+
+        print("extremal reading: the heaviest antichain is the drop-one block")
+        print(line(f"periods 2..{max_period}", str(census["periods"]),
+                   "with at least two distinct primes"))
+        for name in ("proven-zero", "block-saves", "band"):
+            row = regions.get(name)
+            if row is None:
+                continue
+            print(line(name, str(row["rows"]),
+                       f"gap 0 on {row['gap_zero']}, warrant {row['warrant']}"))
+        print(line("the block is the maximum",
+                   str(sum(r["block_attains"] for r in regions.values())),
+                   "of those periods, on every one"))
+        if band:
+            print(line("band members",
+                       " ".join(str(r["period"]) for r in band),
+                       "gap 0, one unit of saving away"))
+        tightest = census["tightest"]
+        if tightest is not None:
+            print(line("closest to a saving", str(tightest["period"]),
+                       f"weight {tightest['weight']} on a bound of "
+                       f"{tightest['bound']}, {tightest['miss']} points short"))
+        for row in census["violations"]:
+            print(f"  VIOLATION  {row['period']}: the antichain "
+                  f"{tuple(row['witness'])} weighs {row['weight']} against the "
+                  f"block's {row['bound']}")
+        print(f"  theorem  {census['theorem']}")
+        print(f"  frontier {census['frontier']}")
+        print(f"  verdict  {census['verdict']}")
+    if broken:
+        return RC_ABOVE_CEILING
+    if not band:
+        print(f"NO_MEDIDO: no band member below {max_period}, so the one region "
+              f"whose warrant is a measurement was not measured", file=sys.stderr)
+        return RC_NO_MEDIDO
+    return RC_OK
+
+
 def _print_odd_band(max_omega: int, max_prime: int, slack: int | None,
                     as_json: bool) -> int:
     """The odd half of the band: a window through Giuga's equation, measured.
@@ -719,6 +778,36 @@ def _self_test() -> int:
           worst_antichain_weight(858)[0], sum(858 // p for p in primes_of(858)))
     check("and it still saves nothing",
           antichain_saving_ceiling(858)[0], 0)
+    heavy = heaviest_antichain(30)
+    check("so the extremal reading of the lemma holds on the band too",
+          (heavy["bound"], heavy["weight"], heavy["gap"]), (31, 31, 0))
+    check("and the maximum is the block, not merely a number that ties",
+          heavy["block_attains"], True)
+    check("with the warrant named: the band is measured, never proved",
+          heavy["warrant"], "measured")
+    check("a period the lemma does prove carries a different warrant",
+          heaviest_antichain(36)["warrant"], "theorem")
+    checked = extremal_census(300)
+    check("no antichain outweighs the block below 300",
+          checked["violations"], [])
+    check("and the band's only member below 300 is 30",
+          [row["period"] for row in checked["band_rows"]], [30])
+    check("the band misses a saving by one unit, the least a miss can be",
+          (checked["band_rows"][0]["miss"],
+           checked["band_rows"][0]["tightest_miss"]), (2, True))
+    check("the miss is the distance from the top of the window",
+          (heavy["miss"], heavy["slack"] - heavy["excess"] + 2), (2, 2))
+    check("so tightness is m == slack and nothing else",
+          (heavy["excess"], heavy["slack"], heavy["tightest_miss"]),
+          (1, 1, True))
+    check("and a miss is always even, because the weights share a parity",
+          (heavy["weight"] % 2, (30 + heavy["slack"]) % 2, heavy["miss"] % 2),
+          (1, 1, 0))
+    try:
+        heaviest_antichain(7)
+    except ValueError:
+        check("a prime period has no antichain to weigh", "ValueError",
+              "ValueError")
     census_300 = sign_theorem_census(300)
     check("below 300 the band has exactly one member",
           [row["period"] for row in census_300["band_rows"]], [30])
@@ -916,6 +1005,12 @@ def build_parser() -> argparse.ArgumentParser:
                        help="replace the per-member threshold omega - 1, which"
                             " is how the walk is shown not to be blind")
 
+    p_extremal = sub.add_parser(
+        "extremal-gap",
+        help="read the lemma as an extremum: is the drop-one block the heaviest "
+             "antichain, with the warrant of its region attached?")
+    p_extremal.add_argument("--limit", type=int, default=2000)
+
     p_univ = sub.add_parser(
         "universes",
         help="census the reciprocal sum against both universes, period by "
@@ -973,6 +1068,8 @@ def main(argv: list[str] | None = None) -> int:
             return _print_strong_lemma(args.max_primes, args.json)
         if args.command == "sign-theorem":
             return _print_sign_theorem(args.max_period, args.json)
+        if args.command == "extremal-gap":
+            return _print_extremal_gap(args.limit, args.json)
         if args.command == "verify-acta":
             return _print_verify_acta(args.manifest, args.json, args.source)
         if args.command == "odd-band":

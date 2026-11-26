@@ -435,6 +435,83 @@ sign lemma: if no block saves, no antichain saves
   verdict  no antichain saves where the theorem forbids it
 ```
 
+#### The block is not only allowed, it is the maximum
+
+The lemma above is stated as an inequality: every antichain weighs at most
+`e1(P)`. But the drop-one block `{L // p}` *is* one of those antichains, its
+least common multiple is `L`, and its weight is exactly `sum(L // p)`. So
+
+    max_A sum_A a  ==  sum(L // p)   whenever  e1(P) <= 1,
+
+where the left side is a maximum over every antichain of proper divisors of `L`.
+The lower bound is the block; the upper bound is the lemma; there is nothing
+left between them. That matters because it turns the sign reading from a search
+that came out empty into an identity: a period whose block saves nothing has no
+saving antichain *because nothing else can be heavier than the block*, not
+because a walk stopped early.
+
+The equality has three regions and this package refuses to report one number
+without the other two. Where `e1(P) <= 1` it is a theorem; where the block
+already saves it is measured and harmless; in the band it is measured, and the
+measurement is tight, with an identity behind it. A saving needs
+`sum_A a >= L + slack + 2` while the block weighs `L + m`, so
+
+    miss  =  slack - m + 2,
+
+which is `2` exactly when `m == slack` -- the top of the band, the last value
+that still saves nothing. `sum_A a` and `L + slack` share a parity, so no
+antichain can miss by fewer than two points, and two points of weight *is* one
+unit of saving: the tightest band member is one saving away and cannot be
+closer. `miss` is non-positive exactly when the block already saves, so the
+field doubles as the region test. That also makes the band's two instruments one
+statement, because `m == slack` is the condition for tightness here and the
+threshold `odd-band` searches for: an empty odd band is the same sentence as *no
+odd period is anywhere near one unit of saving*.
+
+```
+$ exact-lattice-quantiles extremal-gap
+extremal reading: the heaviest antichain is the drop-one block
+  periods 2..2000                   1666  with at least two distinct primes
+  proven-zero                       1581  gap 0 on 1581, warrant theorem
+  block-saves                         82  gap 0 on 82, warrant measured
+  band                                 3  gap 0 on 3, warrant measured
+  the block is the maximum          1666  of those periods, on every one
+  band members                    30 858 1722  gap 0, one unit of saving away
+  closest to a saving                 30  weight 31 on a bound of 31, 2 points short
+  theorem  max sum(a) == sum(period / p) for every period with sum(1/p) <= 1, attained by the drop-one block
+  frontier sum(period / p) is not an upper bound in general: the pair family outweighs the block from 176 primes on, largest 1049 (strong_lemma_frontier)
+  verdict  the block is the heaviest antichain wherever the gap is zero, by theorem where the reciprocal sum is at most one and by measurement elsewhere in this population
+```
+
+A horizon that cannot reach the band exits `4`: the only region whose warrant is
+a measurement would be missing from the table, and an empty measured column is
+not a green one.
+
+```
+$ exact-lattice-quantiles extremal-gap --limit 20 ; echo "rc=$?"
+NO_MEDIDO: no band member below 20, so the one region whose warrant is a measurement was not measured
+extremal reading: the heaviest antichain is the drop-one block
+  periods 2..20                        7  with at least two distinct primes
+  proven-zero                          7  gap 0 on 7, warrant theorem
+  the block is the maximum             7  of those periods, on every one
+  closest to a saving                  6  weight 5 on a bound of 5, 4 points short
+  ...
+rc=4
+```
+
+The horizon is declared, not implied. The equality is **false** in general: the
+pair family `{L // (p q)}` is also an antichain with least common multiple `L`,
+and at `176` primes -- the largest `1049`, a `440`-digit period -- it outweighs
+the block, for the same reason the ranking reading dies there. That failure is
+*outside* the region the sign reading needs: it happens where the block already
+saves `1.4e+439` points to begin with, so the closed form never consults the
+bound there. Below `200 000` the census visits `181 879` periods with at least
+two distinct primes -- `173 537` proved, `8 338` block-saves, `4` band members
+(`30`, `858`, `1722`, `66198`, the four Giuga numbers below `200 000`) -- and the
+gap is zero on every one of them, with the drop-one block as the witness on
+every one of them. `--limit` moves the horizon; the report carries the frontier
+with the number so the two cannot be cited apart.
+
 #### The three regimes are one integer predicate
 
 `#odd_B` is decided by the two-adic valuation alone -- `w` when `L` is odd, one
@@ -917,8 +994,8 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 309 tests
-exact-lattice-quantiles --self-test           # 76 checks, RC 0
+python -m unittest discover -s tests -t .     # 332 tests
+exact-lattice-quantiles --self-test           # 87 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,
