@@ -131,6 +131,13 @@ class ThePairLaw(unittest.TestCase):
         self.assertIn("the fee of one",
                       fee_frontier_census(max_period=400)["pair_law"])
 
+    def test_the_law_is_the_same_in_both_universes(self):
+        census = fee_frontier_census(max_period=200, reduced=False,
+                                     verify_universe=16)
+        self.assertEqual(census["pair_over"], ())
+        self.assertEqual(len(census["pair_misses"]),
+                         len(census["at_zero"]) + len(census["at_one"]))
+
     def test_at_two_parts_the_pair_law_declares_itself_unmeasured(self):
         row = fee_frontier_census(max_period=400, arity=2)
         self.assertTrue(row["pair_law"].startswith("NOT_APPLICABLE"),

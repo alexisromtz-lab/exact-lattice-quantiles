@@ -809,6 +809,34 @@ antichains of at most three parts costs `C(|U|, 3)`; the law over pairs costs
 `1` -- which a triple supplies. So the enumeration is a search for the two shapes
 of the fee of one, not a search for the frontier.
 
+And the third part is the third part in **either** universe, not only in the
+reduced one. The full divisor lattice `D(T)` stores twelve periods at a fee of no
+fee against the single `1080` of `U(T)` -- unbounded grids break the closed form
+earlier and more often -- but where the closed form does hold, the pairs hold it:
+
+```
+$ exact-lattice-quantiles fee-census --universe divisors --max-period 400 --verify-universe 16
+fee census: the fee that breaks the closed form, period by period
+  horizon                 400             D(T) universe, blocks of at most 3 parts
+  periods                 200             192 verified against every antichain (|U| <= 16)
+  mismatches              0               periods where no block of that size attains the frontier
+  chains                  8               no antichain at all: no fee breaks these
+  at zero                 12              already broken at no fee (60, 90, 120, 150, 180, 210, 240)
+  at one                  9               break first at a fee of 1
+  widest frontier         100             period 398 on (2, 199)
+  witness sizes           2: 169, 3: 15   on the verified periods
+  pairs miss              21              a triple beats every pair
+  pair over               0               of those, above a fee of one: the law refuted if not 0
+  pair law 21 periods put a triple above every pair and all of them sit at a fee of at most one, so the third part buys exactly one thing: the fee of one
+  verdict  the law holds on all 192 periods of D(T) with at most 16 grids, witnesses of size [2, 3]; 8 periods are chains where no fee breaks the formula, 12 break with no fee at all [60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 360, 390], and 9 break first at a fee of 1 on 2 shapes (6, 10, 15), (6, 14, 21); the widest frontier is 100 at period 398 on (2, 199)
+```
+
+`21 = 12 + 9` the same way `52 = 51 + 1` did, on a different universe and with
+different witnesses: the fee of one still needs `(6, 10, 15)` or `(6, 14, 21)`
+and nothing above it ever needs a triple. What changes between universes is not
+the pair law but where the frontier reaches zero -- and that is published as data,
+not assumed by the law.
+
 ### 5. A margin survives exactly zero drift
 
 The witness margin is a knife edge: the divisor that fixes it sits on the edge
