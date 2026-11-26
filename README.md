@@ -20,6 +20,7 @@ returns it as a `fractions.Fraction`:
 | --- | --- | --- |
 | What is the best margin this period can ever have? | a closed-form constant of `T`, not a search | `instance_ceiling` |
 | What is the cheapest design reaching margin `v`? | exact hypergraph coverage | `minimum_cost_design` |
+| Which divisors does that search actually have to tell apart? | the kernel of the coverage matrix | `coverage_kernel` |
 | Which margin costs `c` points? | the whole trade-off curve | `ladder` |
 | How many shared sections hold margin `v`? | set cover over the divisor universe | `minimum_probes` |
 | What is the best margin `k` sections can hold? | maximin over probe positions | `best_probes` |
@@ -506,8 +507,8 @@ request costs exactly what its maximals cost, and the state space is `2^k` with
 `k` the number of maximals. Verified against the `2^|U|` table on all 8 388 607
 requests over the divisors of 360, with 0 discrepancies -- and it is what makes
 `price_exact(1080, (54, 90, 135))` return `135` in under a millisecond where the
-full table is `2^23` masks, and `2520` is `2^32` — a table the package now
-refuses by name (`RC 5`, `MaskTableTooLarge`) instead of trying to allocate. The
+full table is `2^23` masks, and `2520` is `2^32` — a census the package refuses
+by name (`RC 5`, `MaskTableTooLarge`) instead of trying to allocate. The
 contrast is the whole argument: `price_form_census(2520)` enumerates all `2^32`
 requests and is refused, while `price_exact(2520, U(2520))` returns `649` in
 under a millisecond, because those 32 divisors have 6 maximals and the request
@@ -600,35 +601,81 @@ the second arrived as CPython's `ValueError: min() iterable argument is empty`
 `RC 5` is not `RC 3`, and the distance between them is the whole distinction: an
 odd period has no answer to give, a period above the table budget has an answer
 and no room to compute it here. Six call sites size a bitmask table by `2^n` in
-the number of divisors — the cheapest-design DP, the set-cover DP, the design
+the number of divisors -- the cheapest-design DP, the set-cover DP, the design
 census, the maximal-divisor table, the cheapest-cover table and the frontier
-price table — and before 0.11.0 the only bound on that allocation was the
+price table -- and before 0.11.0 the only bound on that allocation was the
 machine, so the process was killed with `RC 137` and the caller learned nothing:
 not the period, not the site, not that the schedule exists. From 0.11.0
 `mask_table` is the only way a site sizes a table, and it refuses by name before
-a single list is built: `solve 1440` answers `RC 5` in 3 ms and says
-`2^27 masks over 36 rows = 4831838208 cells, above the budget of 536870912`.
+a single list is built:
 
-The budget is a **cell count** — slots touched — and not seconds, because wall
-time on a shared machine moved by 4x between two runs of the same instance.
-Peak RSS read with `/usr/bin/time -l`; `getrusage` inside the process reported
-`0.54 GB` right after a `1.2 GB` allocation and is not an instrument here.
+```
+$ exact-lattice-quantiles solve 4032 --min-margin 1/6     # RC 5
+period 4032: the cheapest-design DP would allocate 2^26 masks over 12 rows
+= 805306368 cells, above the budget of 536870912; the answer exists and this
+implementation will not allocate the table
+```
 
-| site | period | divisors | cells | verdict |
-| --- | --- | --- | --- | --- |
-| design | 360 | 17 | `24 * 2^17` = 3.1 M | 0.5 s, returns |
-| design | 720 | 22 | `30 * 2^22` = 126 M | 25.5 s, 0.83 GB |
-| design | 1260 | 23 | `36 * 2^23` = 302 M | 11–48 s, 1.46 GB |
-| design | 1440 | 27 | `36 * 2^27` = 4832 M | refused, RC 5 |
-| design | 1800 | 24 | `35 * 2^24` = 604 M | never returned |
-| probes | 1680 | 27 | `2 * 2^27` = 268 M | 6.2 s, 2.02 GB |
-| census | 360 | 17 | `17 * 2^17` = 2.2 M | 13.3 s |
-| census | 720 | 22 | `29 * 2^22` = 122 M | refused, RC 5 |
+#### The cheapest-design table was a property of the formulation
 
-`TABLE_BUDGET = 2^29` sits between the largest instance that ever returned
-(`1260`, 302 M cells) and the next class up (`1800`, 604 M cells), so the
-refusal eats nothing that was ever answered: `T = 360` at a `1/6` margin is
-still `112` points, and that is a test, not a promise.
+From 0.12.0 the design DP does not count divisors, it counts **classes of
+divisors that are not already implied**. Write `cols[d]` for the grids whose
+block for `d` is at least `v` wide. A design holds `d` exactly when it contains
+a grid of `cols[d]`, so if `cols[e]` is contained in `cols[d]`, every design
+that holds `e` also holds `d`: the constraint on `d` is implied and dropping it
+cannot move the optimum. The divisors that survive that test are the **kernel**
+of the coverage matrix, and the DP runs over `2^|K|` states instead of
+`2^|U|`, where `K` is the kernel:
+
+| period | divisors | kernel at `1/6` | cells | cost at `1/6` | time |
+| --- | --- | --- | --- | --- | --- |
+| 720 | 22 | 14 | `12 * 2^14` = 197 K | 271 | 0.0 s |
+| 1440 | 27 | 19 | `12 * 2^19` = 6.3 M | 590 | 1.3 s |
+| 1680 | 27 | 19 | `12 * 2^19` = 6.3 M | 652 | 1.3 s |
+| 1800 | 24 | 13 | `12 * 2^13` = 98 K | 499 | 0.0 s |
+| 2520 | 32 | 20 | `12 * 2^20` = 12.6 M | 888 | 2.9 s |
+| 2880 | 32 | 24 | `12 * 2^24` = 201 M | 1227 | 51 s |
+
+`T = 1440`, `1680` and `2520` were refused by 0.11.0 -- `2520` asked for
+`2^32` masks -- and are now computed. The budget did not move: the table shrank,
+from `2^32` to `2^20` on the period that was four thousand times over it. The
+kernel is a property of the *threshold*, not of the period: `2520` keeps 18 of
+its 32 divisors at `1/126`, 20 at `1/6` and 23 at its own ceiling of `8/35`,
+because near the ceiling almost nothing is implied any more. Above the ceiling
+every column empties, all of them are equal, and the kernel is one empty column.
+
+The equivalence is pinned twice, not argued: against an enumeration of all
+`2^12` designs at every one of the 22 widths of `T = 180`, and against the
+previous `2^|U|` DP on **2377 instances** -- every even period from 2 to 400
+against every width of the instance *and* the coverage-only threshold `0`, with
+0 discrepancies. Threshold `0` is the case that a defaulted read of a
+non-existent pair gets wrong: a pair that does not exist is not a wide block,
+and reading it as zero width makes every grid cover every divisor and the
+cheapest design collapse to a single grid. `margin 0` is the coverage price,
+`47` points for `T = 180`.
+
+Three sites still refuse, and they refuse for a reason the kernel does not
+touch:
+
+| site | period | cells | how a caller meets it |
+| --- | --- | --- | --- |
+| design | 4032 | `12 * 2^26` = 805 M | through the API: at `1/6` its kernel keeps 26 of 33 divisors |
+| probes | 4032 | `2 * 2^33` = 17 G | `solve` refuses here first, before the design DP |
+| census | 720 | `29 * 2^22` = 122 M | `designs 720` |
+
+So the design DP is no longer the binding refusal anywhere a caller can reach
+it: the set-cover table grows with the universe and not with the kernel, so for
+`|U| >= 29` it refuses before the design DP is sized, and below that the kernel
+fits. Measured on every even period up to 12000 with `|U| <= 28`: the kernel
+never exceeds 25 divisors at `1/6` or `1/5`, and 25 is exactly what the budget
+allows.
+
+`TABLE_BUDGET = 2^29` is a **cell count** -- slots touched -- and not seconds,
+because wall time on a shared machine moved by 4x between two runs of the same
+instance. Peak RSS read with `/usr/bin/time -l`; `getrusage` inside the process
+reported `0.54 GB` right after a `1.2 GB` allocation and is not an instrument
+here. And the refusal eats nothing that was ever answered: `T = 360` at a `1/6`
+margin is still `112` points, and that is a test, not a promise.
 
 `PROBES_INSUFFICIENT` is a verdict on the returned `Schedule`, not an
 exception: the design was found, the sections were not enough, and the object

@@ -37,10 +37,11 @@ from .arithmetic import (divisors, dropped_primes, euler_phi, mass,
 from .ceiling import (Ceiling, InfeasibleAboveInstanceCeiling,
                       OddPeriodUnsupported, ceiling_by_product,
                       ceiling_by_scan, ceiling_census, instance_ceiling)
-from .coverage import (DesignLaw, DriftLaw, best_probes, covered_divisors,
-                       design_law, design_margin, drift_law, drift_radius,
-                       drift_tolerance, margin_ladder, minimum_cost_design,
-                       minimum_probes, witness_margin)
+from .coverage import (DesignLaw, DriftLaw, best_probes, cover_masks,
+                       coverage_kernel, covered_divisors, design_law,
+                       design_margin, drift_law, drift_radius, drift_tolerance,
+                       margin_ladder, minimum_cost_design, minimum_probes,
+                       witness_margin)
 from .lattice import (TABLE_BUDGET, MaskTableTooLarge, carriers, cell_intervals,
                       cell_width, cell_widths, grids, mask_table, seats,
                       universe, universe_from_factorization, widths)
@@ -109,6 +110,7 @@ __all__ = [
     "cell_intervals",
     "cell_width",
     "cell_widths",
+    "coverage_kernel",
     "design_margin",
     "design_law",
     "DesignLaw",

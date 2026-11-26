@@ -28,10 +28,12 @@ from .ceiling import (InfeasibleAboveInstanceCeiling, ceiling_by_product,
 from .acta import (ManifestError, SourceError, inspect_source, load_manifest,
                    parse_tables, render, shipped_manifest, verify_file,
                    verify_manifest)
-from .coverage import (coverage_census, design_law, drift_law, drift_radius,
-                       drift_tolerance, witness_margin)
+from .coverage import (coverage_census, coverage_kernel, design_law, drift_law,
+                       drift_radius, drift_tolerance, minimum_cost_design,
+                       witness_margin)
 from .arithmetic import primes_of
-from .lattice import TABLE_BUDGET, MaskTableTooLarge, mask_table, universe
+from .lattice import (TABLE_BUDGET, MaskTableTooLarge, cell_widths,
+                      grids, mask_table, universe)
 from .pricing import (antichain_saving_ceiling, band_slack, band_window,
                       block_catalogue,
                       block_dominance_census, block_of, block_saving,
@@ -614,6 +616,16 @@ def _self_test() -> int:
           exactness_frontier(2000, reduced=False)["period"], 60)
     check("every carrier universe misprices first at 1080",
           exactness_frontier(2000)["period"], 1080)
+    g2520, u2520 = grids(2520), universe(2520)
+    w2520 = cell_widths(g2520, u2520)
+    kept, _ = coverage_kernel(g2520, u2520, w2520, Fraction(1, 6))
+    check("the kernel of 2520 at 1/6 is 20 of 32 divisors", len(kept), 20)
+    check("and its cheapest design costs 888",
+          minimum_cost_design(g2520, u2520, w2520, Fraction(1, 6), 2520)[0], 888)
+    check("a period the table used to refuse now reaches its ceiling",
+          minimum_cost_design(grids(1440), universe(1440),
+                              cell_widths(grids(1440), universe(1440)),
+                              Fraction(4, 15), 1440)[0], 735)
     check("the universe filters the block of 420 down to three elements",
           carrier_block_of(420, universe(2520))[0], (84, 140, 210))
     check("and that filtered block still saves 7",

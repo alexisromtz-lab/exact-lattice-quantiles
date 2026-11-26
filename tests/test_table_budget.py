@@ -68,20 +68,21 @@ class TestTheRefusalNamesTheInstance(unittest.TestCase):
 
 
 class TestTheSitesRefuseBeforeAllocating(unittest.TestCase):
-    def test_the_design_dp_names_the_period(self):
+    def test_the_design_dp_answers_what_it_used_to_refuse(self):
+        # The period the table used to name is now computed: its kernel has 18
+        # divisors, so the DP asks for 2^18 masks and not for 2^36.
         gr, U = grids(1440), universe(1440)
         widths = cell_widths(gr, U)
-        with self.assertRaises(MaskTableTooLarge) as caught:
-            minimum_cost_design(gr, U, widths, Fraction(1, 6), 1440)
-        self.assertEqual(caught.exception.period, 1440)
-        self.assertEqual(caught.exception.site, "the cheapest-design DP")
+        cost, design = minimum_cost_design(gr, U, widths, Fraction(1, 6), 1440)
+        self.assertEqual(cost, 590)
+        self.assertIsNotNone(design)
 
-    def test_the_ladder_inherits_the_refusal(self):
+    def test_the_ladder_of_that_period_reaches_its_ceiling(self):
         gr, U = grids(1440), universe(1440)
         widths = cell_widths(gr, U)
-        with self.assertRaises(MaskTableTooLarge) as caught:
-            margin_ladder(gr, U, widths, 1440)
-        self.assertEqual(caught.exception.period, 1440)
+        ladder = margin_ladder(gr, U, widths, 1440)
+        self.assertEqual(ladder[max(ladder)], Fraction(4, 15))
+        self.assertEqual(max(ladder), 735)
 
     def test_the_set_cover_dp_refuses_on_its_own_table(self):
         # The one site whose budget is not the calling period's design table:
@@ -101,6 +102,29 @@ class TestTheSitesRefuseBeforeAllocating(unittest.TestCase):
         with self.assertRaises(MaskTableTooLarge) as caught:
             price_form_census(2520)
         self.assertEqual(caught.exception.period, 2520)
+
+    def test_a_wide_kernel_is_refused_by_name(self):
+        # Thirty divisors that no grid covers two at a time: nothing implies
+        # anything, the kernel is the whole universe, and the table would be
+        # twelve bytes wide over 2^30 states.
+        n = 30
+        gr = tuple(2 * (i + 1) for i in range(n))
+        widths = {(M, d): Fraction(1, 2) if M == d else Fraction(0)
+                  for M in gr for d in gr}
+        with self.assertRaises(MaskTableTooLarge) as caught:
+            minimum_cost_design(gr, gr, widths, Fraction(1, 6), 60)
+        self.assertEqual(caught.exception.site, "the cheapest-design DP")
+        self.assertEqual(caught.exception.period, 60)
+        self.assertEqual(caught.exception.count, n)
+
+    def test_more_grids_than_one_mask_word_still_answers(self):
+        # Seventy grids over three divisors: every grid covers everything, so
+        # the kernel is one divisor and the cheapest grid wins.  The grid mask
+        # no longer fits in one word, which is the other branch of the same DP.
+        gr = tuple(2 * (i + 1) for i in range(70))
+        widths = {(M, d): Fraction(1, 2) for M in gr for d in (2, 4, 6)}
+        self.assertEqual(minimum_cost_design(gr, (2, 4, 6), widths,
+                                             Fraction(1, 6), 8), (1, (2,)))
 
 
 class TestTheInstancesThatReturnedStillReturn(unittest.TestCase):

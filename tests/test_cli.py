@@ -149,21 +149,22 @@ class TestSolveOutput(unittest.TestCase):
 
 class TestBeyondTableBudget(unittest.TestCase):
     def test_a_period_above_the_table_budget_exits_five(self):
-        rc, out = run("solve", "1440", "--max-cost", "99999", "--probes", "8")
+        rc, out = run("solve", "4032", "--max-cost", "99999", "--probes", "8")
         self.assertEqual(rc, 5)
         self.assertIn("BEYOND_TABLE_BUDGET", out)
-        self.assertIn("period 1440", out)
+        self.assertIn("period 4032", out)
 
     def test_the_json_verdict_carries_the_arithmetic(self):
         # Exit 5 is not exit 3: the schedule exists and the table does not fit,
         # so the payload names the cells and the budget that refused them.
-        rc, out = run("--json", "solve", "1440", "--max-cost", "99999",
+        rc, out = run("--json", "solve", "4032", "--max-cost", "99999",
                       "--probes", "8")
         self.assertEqual(rc, 5)
         payload = json.loads(out)
         self.assertEqual(payload["verdict"], "BEYOND_TABLE_BUDGET")
         self.assertEqual(payload["budget"], TABLE_BUDGET)
-        self.assertEqual(payload["cells"], 36 << 27)
+        self.assertEqual(payload["cells"], 2 << 33)
+        self.assertEqual(payload["site"], "the set-cover DP")
 
 
 class TestSelfTest(unittest.TestCase):

@@ -151,7 +151,7 @@ def solve_lattice_schedule(period: int, max_cost: int, k_probes: int,
     if cost > max_cost:
         raise InfeasibleWithinBudget(period, required, cost, max_cost)
 
-    _, sections = best_probes(design, U, k_probes)
+    _, sections = best_probes(design, U, k_probes, period=period)
     probes = tuple(sections)
     held_divisors = set(covered_divisors(design, probes, U))
     uncovered = tuple(d for d in U if d not in held_divisors)
@@ -161,7 +161,7 @@ def solve_lattice_schedule(period: int, max_cost: int, k_probes: int,
     else:
         realised = min(witness_margin(design, probes, U).values())
         held = min(drift_radius(design, probes, U).values())
-    needed, _ = minimum_probes(design, U, required)
+    needed, _ = minimum_probes(design, U, required, period=period)
 
     if needed is None:
         # No section count holds this margin on this design: not a budget
