@@ -40,6 +40,7 @@ jobs:
           exact-lattice-quantiles strong-lemma
           exact-lattice-quantiles sign-theorem
           exact-lattice-quantiles odd-band --max-omega 10 --max-prime 60
+          exact-lattice-quantiles universes --max-period 400
           exact-lattice-quantiles drift 180 --max-cost 64 --probes 4
           exact-lattice-quantiles solve 180 --max-cost 64 --probes 4 --min-margin 1/3
           exact-lattice-quantiles verify-acta src/exact_lattice_quantiles/manifests/acta_margen_secciones_20261125.json

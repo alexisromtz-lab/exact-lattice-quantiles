@@ -1078,6 +1078,24 @@ def block_catalogue(limit: int) -> tuple[tuple[int, int, tuple[int, ...]], ...]:
     return tuple(out)
 
 
+def _block_break(period: int, reduced: bool) -> tuple[int, int, tuple[int, ...], int]:
+    """``(saving, n, kept, whole)`` of the biggest saving of any block of a period.
+
+    ``saving`` is zero when no block of the period saves, which is the reading
+    the sign lemma argues about; ``n`` and ``kept`` are the witness when it does.
+    """
+    carried = set(universe(period)) if reduced else set(divisors(period))
+    best = (0, 0, (), 0)
+    for n in divisors(period):
+        if n < 2:
+            continue
+        kept, whole = carrier_block_of(n, carried)
+        saving = sum(d // 2 for d in kept) - whole // 2
+        if saving > best[0]:
+            best = (saving, n, kept, whole)
+    return best
+
+
 def frontier_by_blocks(max_period: int, reduced: bool = False) -> dict:
     """The frontier over either universe, by one law with the universe as a filter.
 
@@ -1105,15 +1123,7 @@ def frontier_by_blocks(max_period: int, reduced: bool = False) -> dict:
     periods = range(2, max_period + 1, 2)
     breaks = []
     for period in periods:
-        carried = set(universe(period)) if reduced else set(divisors(period))
-        best = (0, 0, (), 0)
-        for n in divisors(period):
-            if n < 2:
-                continue
-            kept, whole = carrier_block_of(n, carried)
-            saving = sum(d // 2 for d in kept) - whole // 2
-            if saving > best[0]:
-                best = (saving, n, kept, whole)
+        best = _block_break(period, reduced)
         if best[0] > 0:
             breaks.append((period,) + best)
     scanned = max_period // 2
@@ -1155,3 +1165,68 @@ def exactness_frontier(max_period: int = 8000, reduced: bool = True) -> dict:
     :func:`price_exact` now runs there too by taking the maximals only.
     """
     return frontier_by_blocks(max_period, reduced=reduced)
+
+
+def reciprocal_filter_census(max_period: int = 400) -> dict:
+    """Cross the sign lemma's hypothesis with both universes, period by period.
+
+    The lemma is proved from ``lcm(A)`` alone, so it transfers to any set of
+    grids a schedule may use -- and a theorem that transfers is only worth the
+    row that exercises it.  Every even period up to ``max_period`` is decided
+    two ways here: by ``prime_excess`` (the hypothesis ``sum(1/p) <= 1``) and by
+    the biggest saving of any of its blocks over ``U(T)`` and over ``D(T)``.
+
+    The two columns separate two different reasons for having no saving.  Below
+    one, *no* universe may break, and neither does: that is the proof reaching
+    the census.  Above one the proof says nothing, and the period is decided by
+    which divisors survive the filter -- ``60`` breaks over every divisor and
+    not over the carriers, and ``30`` breaks nowhere, because the band's saving
+    is a point the floors absorb.
+
+    A period whose excess is above one and whose two columns disagree is the
+    whole finding: same period, same reciprocal sum, same law, other universe.
+    """
+    rows = []
+    for period in range(2, max_period + 1, 2):
+        excess = prime_excess(period)
+        saving_u, _, kept_u, _ = _block_break(period, True)
+        saving_d, _, kept_d, _ = _block_break(period, False)
+        rows.append({
+            "period": period,
+            "excess": excess,
+            "above_one": excess > 0,
+            "reduced": saving_u,
+            "reduced_witness": kept_u,
+            "divisors": saving_d,
+            "divisors_witness": kept_d,
+        })
+    proved = [row for row in rows if not row["above_one"]]
+    band = [row for row in rows if row["above_one"]]
+    clean = [row for row in proved
+             if row["reduced"] == 0 and row["divisors"] == 0]
+    filtered = [row for row in band if row["reduced"] == 0]
+    split = [row for row in band
+             if row["reduced"] == 0 and row["divisors"] > 0]
+    widest = max(rows, key=lambda row: row["divisors"], default=None)
+    if not rows:
+        verdict = "no period was censused"
+    elif len(clean) < len(proved):
+        verdict = "the proof does not reach the census: a period below one breaks"
+    elif split:
+        verdict = ("the filter decides, not the reciprocal sum: "
+                   f"{len(split)} of {len(band)} periods above one break over "
+                   "every divisor and none over the carriers")
+    else:
+        verdict = "no period here separates the two universes"
+    return {
+        "max_period": max_period,
+        "periods": len(rows),
+        "proved": len(proved),
+        "proved_without_break": len(clean),
+        "band": len(band),
+        "band_clean_reduced": len(filtered),
+        "band_breaking_divisors": len(split),
+        "widest": widest,
+        "rows": rows,
+        "verdict": verdict,
+    }

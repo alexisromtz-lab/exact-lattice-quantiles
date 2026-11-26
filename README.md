@@ -287,6 +287,35 @@ pair of incomparable grids never saves -- which is why `840` is a multiple of
 `60` and does not break. A frontier quoted without its universe is a number
 about the wrong set.
 
+#### The proof transfers to any universe, and the census says where it lands
+
+The sign lemma is proved from `lcm(A)` alone, so no set of grids escapes it: if
+`sum(1/p) <= 1` over the primes of `T`, no block saves -- over `U(T)`, over
+`D(T)`, over any filter a schedule may apply. A theorem that transfers is worth
+exactly the row that exercises it, so `universes` crosses the hypothesis with
+both columns on every even period:
+
+```
+$ exact-lattice-quantiles universes --max-period 400
+reciprocal sum against universe, even periods to 400
+  periods                                200
+  sum 1/p at most one                    187  no block saves in either universe
+  above one                               13  the proof says nothing here
+    clean over U(T)                       13  the filter folds the band
+    breaking over D(T)                    12  same period, same sum, other universe
+  widest gap                           T=390  excess 43  U(T) 0  D(T) 21
+  verdict: the filter decides, not the reciprocal sum: 12 of 13 periods above one break over every divisor and none over the carriers
+```
+
+`187` is not a claim, it is a count that the census recomputes: it is the number
+of even periods to `400` whose reciprocal sum is at most one, and every one of
+them is clean in *both* universes. The thirteen above one are where the proof is
+silent and the universe answers instead -- `60` breaks over every divisor and
+not over the carriers, `180` saves `3` there against `0`, `390` saves `21`
+against `0` -- except `30`, which breaks in neither, because its saving is
+exactly the point the floors absorb. That row is the band seen from the other
+side: same period, same reciprocal sum `31/30`, and no authority but the filter.
+
 **What the law is not.** It is a statement about the *maximum*, not about every
 saving set. In `D(1050)` the antichain `{42, 150, 350, 525}` saves `8` points
 and `42` is no `1050 / p`: its reciprocals are `1/2 + 1/3 + 1/7 + 1/25 > 1`, so
@@ -729,8 +758,8 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 264 tests
-exact-lattice-quantiles --self-test           # 60 checks, RC 0
+python -m unittest discover -s tests -t .     # 273 tests
+exact-lattice-quantiles --self-test           # 63 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,

@@ -39,7 +39,8 @@ from .pricing import (antichain_saving_ceiling, band_slack, band_window,
                       exactness_frontier, odd_band_census, pair_antichain_of,
                       pair_antichain_saving, price_exact,
                       price_form_census, price_form_sweep, prime_excess,
-                      reciprocal_prime_sum, sign_regime, sign_theorem_census,
+                      reciprocal_filter_census, reciprocal_prime_sum,
+                      sign_regime, sign_theorem_census,
                       strong_lemma_frontier, worst_antichain_weight)
 from .solve import OK, InfeasibleWithinBudget, ladder, solve_lattice_schedule
 
@@ -455,6 +456,41 @@ def _print_odd_band(max_omega: int, max_prime: int, slack: int | None,
     return RC_ABOVE_CEILING if census["candidates"] else RC_OK
 
 
+def _print_universes(max_period: int, as_json: bool) -> int:
+    """The reciprocal sum against both universes: which one decides a period.
+
+    ``RC_OK`` when the census ran.  A period below one that breaks over some
+    universe would mean the proof does not reach the census, so that exits
+    ``RC_ABOVE_CEILING`` -- the package's own claim refuted by its own table.
+    """
+    census = reciprocal_filter_census(max_period)
+    if as_json:
+        print(json.dumps(census, indent=2, sort_keys=True))
+    else:
+        def line(label: str, value: str, note: str = "") -> str:
+            return f"  {label:<34}{value:>8}  {note}"
+
+        print(f"reciprocal sum against universe, even periods to {max_period}")
+        print(line("periods", str(census["periods"])))
+        print(line("sum 1/p at most one", str(census["proved"]),
+                   "no block saves in either universe"))
+        print(line("above one", str(census["band"]),
+                   "the proof says nothing here"))
+        print(line("  clean over U(T)", str(census["band_clean_reduced"]),
+                   "the filter folds the band"))
+        print(line("  breaking over D(T)", str(census["band_breaking_divisors"]),
+                   "same period, same sum, other universe"))
+        widest = census["widest"]
+        if widest is not None:
+            print(line("widest gap", f"T={widest['period']}",
+                       f"excess {widest['excess']}  U(T) {widest['reduced']}"
+                       f"  D(T) {widest['divisors']}"))
+        print(f"  verdict: {census['verdict']}")
+    if census["proved_without_break"] < census["proved"]:
+        return RC_ABOVE_CEILING
+    return RC_OK
+
+
 def _print_verify_acta(manifest: str, as_json: bool, source: str = "") -> int:
     """Recompute the anchors of a manifest: the boundary is a gate, not a memory."""
     try:
@@ -649,6 +685,17 @@ def _self_test() -> int:
           (walked["candidates"], walked["prefixes"] > 0), ([], True))
     check("the same walk finds members the moment the threshold is lifted",
           len(odd_band_census(9, 30, slack=10**9)["candidates"]) > 0, True)
+    universes = reciprocal_filter_census(400)
+    check("every period below one is clean in both universes, not just one",
+          (universes["proved"], universes["proved_without_break"]),
+          (187, 187))
+    check("the same period breaks over every divisor and not over the carriers",
+          [row["divisors"] for row in universes["rows"] if row["period"] == 60],
+          [1])
+    check("and one period of the band breaks in neither universe",
+          [row["period"] for row in universes["rows"]
+           if row["above_one"]
+           and row["reduced"] == 0 and row["divisors"] == 0], [30])
     try:
         anchors = verify_file(shipped_manifest())
     except ManifestError as exc:
@@ -791,6 +838,12 @@ def build_parser() -> argparse.ArgumentParser:
                        help="replace the per-member threshold omega - 1, which"
                             " is how the walk is shown not to be blind")
 
+    p_univ = sub.add_parser(
+        "universes",
+        help="census the reciprocal sum against both universes, period by "
+             "period: the proof covers one column, the filter decides both")
+    p_univ.add_argument("--max-period", type=int, default=400)
+
     p_verify = sub.add_parser(
         "verify-acta",
         help="recompute an acta's anchors from a manifest, naming every field"
@@ -847,6 +900,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "odd-band":
             return _print_odd_band(args.max_omega, args.max_prime,
                                    args.slack, args.json)
+        if args.command == "universes":
+            return _print_universes(args.max_period, args.json)
     except MaskTableTooLarge as exc:
         print(f"BEYOND_TABLE_BUDGET: {exc}", file=sys.stderr)
         return RC_BEYOND_TABLE_BUDGET
