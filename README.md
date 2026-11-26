@@ -725,6 +725,9 @@ fee census: the fee that breaks the closed form, period by period
   at one                  51              break first at a fee of 1
   widest frontier         499             period 1994 on (2, 997)
   witness sizes           2: 889, 3: 10   on the verified periods
+  pairs miss              52              a triple beats every pair
+  pair over               0               of those, above a fee of one: the law refuted if not 0
+  pair law 52 periods put a triple above every pair and all of them sit at a fee of at most one, so the third part buys exactly one thing: the fee of one
   verdict  the law holds on all 909 periods of U(T) with at most 14 grids, witnesses of size [2, 3]; 10 periods are chains where no fee breaks the formula, 1 break with no fee at all [1080], and 51 break first at a fee of 1 on 2 shapes (6, 10, 15), (6, 14, 21); the widest frontier is 499 at period 1994 on (2, 997)
 ```
 
@@ -756,14 +759,83 @@ needed for:
 ```
 $ exact-lattice-quantiles fee-census --max-period 200 --arity 2 ; echo $?
 REFUTED: the block law misprices 5 of 100 periods up to 200
+fee census: the fee that breaks the closed form, period by period
+  horizon                 200             U(T) universe, blocks of at most 2 parts
+  periods                 100             100 verified against every antichain (|U| <= 14)
   mismatches              5               periods where no block of that size attains the frontier
     period 60             1               law says 2 by (6, 10, 15)
     period 84             1               law says 2 by (6, 14, 21)
+    period 120            1               law says 2 by (6, 10, 15)
+    period 168            1               law says 2 by (6, 14, 21)
+    period 180            1               law says 2 by (6, 10, 15)
+  chains                  7               no antichain at all: no fee breaks these
+  at zero                 0               none in this horizon
+  at one                  0               break first at a fee of 1
+  widest frontier         49              period 194 on (2, 97)
+  witness sizes           2: 88           on the verified periods
+  pair law NOT_APPLICABLE: at 2 parts the law is already the pairs, so no triple is enumerated and nothing here measures what one buys
+  verdict  REFUTED: the law prices period 60 at fee 2 while the exhaustive frontier is 1 -- a block of more than 2 parts wins earlier than every block of at most 2
 1
 ```
 
 `RC 1` is the package disagreeing with itself, and it exits on the periods where
 the third part is what wins.
+
+And the third part wins for exactly one reason, which is the sharper statement of
+the law: **a triple only ever buys a fee of one.** Enumerate pairs and you get the
+frontier everywhere the fee reaches two; the `52` periods where you do not are
+the `51` at a fee of one plus the `1` at no fee at all, and nothing else:
+
+```
+$ exact-lattice-quantiles fee-census --max-period 400
+fee census: the fee that breaks the closed form, period by period
+  horizon                 400             U(T) universe, blocks of at most 3 parts
+  periods                 200             198 verified against every antichain (|U| <= 14)
+  mismatches              0               periods where no block of that size attains the frontier
+  chains                  8               no antichain at all: no fee breaks these
+  at zero                 0               none in this horizon
+  at one                  10              break first at a fee of 1
+  widest frontier         100             period 398 on (2, 199)
+  witness sizes           2: 181, 3: 9    on the verified periods
+  pairs miss              10              a triple beats every pair
+  pair over               0               of those, above a fee of one: the law refuted if not 0
+  pair law 10 periods put a triple above every pair and all of them sit at a fee of at most one, so the third part buys exactly one thing: the fee of one
+  verdict  the law holds on all 198 periods of U(T) with at most 14 grids, witnesses of size [2, 3]; 8 periods are chains where no fee breaks the formula, 0 break with no fee at all, and 10 break first at a fee of 1 on 2 shapes (6, 10, 15), (6, 14, 21); the widest frontier is 100 at period 398 on (2, 199)
+```
+
+That is what makes the census affordable instead of merely correct. The law over
+antichains of at most three parts costs `C(|U|, 3)`; the law over pairs costs
+`C(|U|, 2)`, and the periods it cannot answer are the ones whose answer is `0` or
+`1` -- which a triple supplies. So the enumeration is a search for the two shapes
+of the fee of one, not a search for the frontier.
+
+And the third part is the third part in **either** universe, not only in the
+reduced one. The full divisor lattice `D(T)` stores twelve periods at a fee of no
+fee against the single `1080` of `U(T)` -- unbounded grids break the closed form
+earlier and more often -- but where the closed form does hold, the pairs hold it:
+
+```
+$ exact-lattice-quantiles fee-census --universe divisors --max-period 400 --verify-universe 16
+fee census: the fee that breaks the closed form, period by period
+  horizon                 400             D(T) universe, blocks of at most 3 parts
+  periods                 200             192 verified against every antichain (|U| <= 16)
+  mismatches              0               periods where no block of that size attains the frontier
+  chains                  8               no antichain at all: no fee breaks these
+  at zero                 12              already broken at no fee (60, 90, 120, 150, 180, 210, 240)
+  at one                  9               break first at a fee of 1
+  widest frontier         100             period 398 on (2, 199)
+  witness sizes           2: 169, 3: 15   on the verified periods
+  pairs miss              21              a triple beats every pair
+  pair over               0               of those, above a fee of one: the law refuted if not 0
+  pair law 21 periods put a triple above every pair and all of them sit at a fee of at most one, so the third part buys exactly one thing: the fee of one
+  verdict  the law holds on all 192 periods of D(T) with at most 16 grids, witnesses of size [2, 3]; 8 periods are chains where no fee breaks the formula, 12 break with no fee at all [60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 360, 390], and 9 break first at a fee of 1 on 2 shapes (6, 10, 15), (6, 14, 21); the widest frontier is 100 at period 398 on (2, 199)
+```
+
+`21 = 12 + 9` the same way `52 = 51 + 1` did, on a different universe and with
+different witnesses: the fee of one still needs `(6, 10, 15)` or `(6, 14, 21)`
+and nothing above it ever needs a triple. What changes between universes is not
+the pair law but where the frontier reaches zero -- and that is published as data,
+not assumed by the law.
 
 ### 5. A margin survives exactly zero drift
 
@@ -1225,8 +1297,8 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 389 tests
-exact-lattice-quantiles --self-test           # 100 checks, RC 0
+python -m unittest discover -s tests -t .     # 398 tests
+exact-lattice-quantiles --self-test           # 102 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,
