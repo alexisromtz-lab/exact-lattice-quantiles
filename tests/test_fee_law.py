@@ -29,7 +29,8 @@ from exact_lattice_quantiles import (arity_ladder_census, block_advantage,
                                      block_free, cofactor_block,
                                      fee_frontier_by_blocks,
                                      fee_frontier_census, free_margin,
-                                     free_margin_census, grids, universe)
+                                     free_margin_census, free_margin_cross,
+                                     grids, universe)
 from exact_lattice_quantiles.cli import main
 
 
@@ -539,3 +540,76 @@ class TheFreeMargin(unittest.TestCase):
                 if not any(max(a, b) % min(a, b) == 0
                            for a, b in combinations(parts, 2)):
                     yield parts
+
+
+class TheSecondReader(unittest.TestCase):
+    """A number from one instrument is a claim about that instrument.
+
+    ``1080`` comes out of a pruned depth-first walk, and the bound that makes
+    the walk affordable is exactly where a bug would sit: a bound too small
+    silently drops the crossing and ``free_margin_census`` reports a floor that
+    the universe does not have.  ``free_margin_cross`` asks the same question
+    again by grouping blocks by their lcm -- a decomposition with no objective
+    bound at all -- and compares period by period.
+    """
+
+    def test_both_readers_agree_period_by_period_in_both_universes(self):
+        for reduced in (True, False):
+            row = free_margin_cross(max_period=300, reduced=reduced)
+            self.assertEqual(row["disagreements"], ())
+            self.assertEqual(row["broken_witnesses"], ())
+            self.assertGreater(row["periods_measured"], 100)
+
+    def test_the_second_reader_alone_reaches_the_crossing(self):
+        row = free_margin_cross(max_period=1200)
+        first = row["first_free"]
+        self.assertEqual((first["period"], first["block"], first["margin"]),
+                         (1080, (54, 90, 135), 8))
+        self.assertEqual(free_margin(first["block"]), first["margin"])
+
+    def test_the_divisor_line_to_2400_is_the_giuga_trio(self):
+        """The prediction stated before the sweep: if the line's zeros are
+        Giuga's equation, the third one is there and nothing else is."""
+        self.assertEqual(
+            free_margin_cross(max_period=2400, reduced=False)["on_line"],
+            (30, 858, 1722))
+        for primes in ((2, 3, 5), (2, 3, 11, 13), (2, 3, 7, 41)):
+            self.assertEqual(free_margin(cofactor_block(primes)), 0)
+
+    def test_the_crossings_to_3000_are_scales_and_nothing_wider(self):
+        """The margin of ``k`` times the Giuga triple is ``k`` when ``k`` is
+        even and ``k - 1`` when it is odd, so freeness is inherited by scaling
+        and no wider block is needed to reach ``18`` at ``2160``."""
+        crossed = free_margin_cross(max_period=3000)["crossed"]
+        self.assertEqual([r["period"] for r in crossed], [1080, 2160, 2520])
+        for (k, row) in zip((9, 18, 14), crossed):
+            self.assertEqual(row["block"], (6 * k, 10 * k, 15 * k))
+            self.assertEqual(row["margin"], k if k % 2 == 0 else k - 1)
+
+    def test_a_reader_restricted_to_maximal_grids_loses_the_line(self):
+        """The plausible simplification: only maximal grids are worth blocking.
+        On ``U(60)`` that reads ``-20`` where the truth is ``0``, so the
+        restriction -- not the arithmetic -- is what hides the crossing."""
+        pool = universe(60)
+        maxima = tuple(a for a in pool
+                       if not any(b != a and b % a == 0 for b in pool))
+        self.assertEqual(maxima, (6, 15, 20))
+        self.assertEqual(free_margin(maxima), -20)
+        self.assertEqual(free_margin_census(max_period=60)["on_line"][0]["block"],
+                         (6, 10, 15))
+
+    def test_the_command_reads_twice_and_says_so(self):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = main(["cross-read", "--max-period", "120"])
+        self.assertEqual((rc, err.getvalue()), (0, ""))
+        self.assertIn("by lcm", out.getvalue())
+        self.assertIn("disagreements", out.getvalue())
+
+    def test_a_horizon_with_no_block_at_all_is_not_measured(self):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = main(["cross-read", "--max-period", "2"])
+        self.assertEqual(rc, 4)
+        self.assertIn("NO_MEDIDO", err.getvalue())
+        self.assertNotIn("the two readers agree", out.getvalue())

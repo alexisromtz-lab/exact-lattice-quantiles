@@ -979,6 +979,63 @@ def _best_margin(items: tuple[int, ...]) -> tuple[int | None, tuple[int, ...]]:
     return best, block
 
 
+def _best_margin_by_lcm(items: tuple[int, ...]) -> tuple[int | None, tuple[int, ...]]:
+    """The same maximum as :func:`_best_margin`, read by lcm instead of by search.
+
+    A margin is fixed by the block: ``2 * sum(a // 2) - lcm``.  So the blocks
+    partition by their lcm, and every member of a block of lcm ``L`` must
+    divide ``L`` -- the candidates are known before any choice is made, and
+    each class is small enough to enumerate whole.  That is the second reader:
+    it shares neither of the two places where a search can be wrong.  The walk
+    over antichains is replaced by a walk over lcm classes, and the objective
+    bound of :func:`_best_margin` -- the one line that decides what not to
+    explore -- is **absent**, not reimplemented: the only cut left is
+    structural, a grid that does not divide ``L`` cannot belong to a block of
+    lcm ``L``.  A wrong bound hides one block; it cannot hide a class.
+
+    The classes come from the closure of ``lcm`` over the universe rather than
+    from pairs, because three grids can reach an lcm no pair of them reaches:
+    ``lcm(2, 3, 5) = 30`` is the lcm of no pair of ``{2, 3, 5}``, so a
+    pair-generated horizon would skip the Giuga triple while agreeing on
+    everything around it.
+
+    Measured against the search on both universes, every even period to
+    ``3000`` (``1500`` periods each, ``3000`` readings): no disagreement.
+    """
+    pool = tuple(sorted(set(items)))
+    if len(pool) < 2:
+        return None, ()
+    spans: set[int] = set()
+    for part in pool:
+        spans |= {part} | {lcm(span, part) for span in spans}
+    best: int | None = None
+    block: tuple[int, ...] = ()
+    for target in sorted(spans):
+        candidates = tuple(a for a in pool if a < target and target % a == 0)
+        size = len(candidates)
+        if size < 2:
+            continue
+        comparable = tuple(tuple(candidates[i] % candidates[j] == 0
+                                 or candidates[j] % candidates[i] == 0
+                                 for j in range(size))
+                           for i in range(size))
+
+        def walk(start: int, chosen: tuple[int, ...], span: int,
+                 halves: int) -> None:
+            nonlocal best, block
+            if span == target and len(chosen) >= 2:
+                margin = 2 * halves - span + (span & 1)
+                if best is None or margin > best:
+                    best, block = margin, tuple(candidates[j] for j in chosen)
+            for j in range(start, size):
+                if all(not comparable[j][c] for c in chosen):
+                    walk(j + 1, chosen + (j,), lcm(span, candidates[j]),
+                         halves + candidates[j] // 2)
+
+        walk(0, (), 1, 0)
+    return best, block
+
+
 def free_margin_census(max_period: int = 1200, reduced: bool = True) -> dict:
     """The free line read in units of its own distance, not in fees.
 
@@ -992,15 +1049,26 @@ def free_margin_census(max_period: int = 1200, reduced: bool = True) -> dict:
     Measured over the carriers to ``1200``: nineteen periods touch the line,
     every one of them a multiple of ``60`` and every one of them on
     ``(6, 10, 15)`` -- the Giuga triple, whose defect equals its single odd
-    part exactly.  Exactly one period crosses, ``1080 = 18 * 60``, on
+    part exactly.  The first period to cross is ``1080 = 18 * 60``, on
     ``(54, 90, 135) = 9 * (6, 10, 15)`` with margin ``8``: the freeness comes
-    from scaling, not from a fourth part.  Over the divisors the line is
-    touched at ``30`` and ``858`` -- the two smallest Giuga numbers inside the
-    horizon, each on its own cofactor block -- and crossed from ``60`` on.
+    from scaling, not from a fourth part.  It is not the only one -- to
+    ``3000`` the crossings are ``1080``, ``2160`` and ``2520``, at ``9``,
+    ``18`` and ``14`` times the Giuga triple, every one of them free by
+    scaling and none of them by a wider block.
+
+    Over the divisors the line is touched at ``30`` and ``858`` -- the two
+    smallest Giuga numbers inside the horizon, each on its own cofactor block
+    -- and crossed from ``60`` on.  Extended to ``2400`` the divisor line is
+    touched at ``30``, ``858`` and ``1722`` and nowhere else, on
+    ``(6, 10, 15)``, ``(66, 78, 286, 429)`` and ``(42, 246, 574, 861)``: the
+    cofactor blocks of ``2*3*5``, ``2*3*11*13`` and ``2*3*7*41``, the three
+    smallest Giuga numbers, each exactly one reciprocal unit above ``1``.
 
     The horizon has to reach the witness, and this one is chosen to: ``1080``
     sits eighty periods past the ``1000`` a fee-read census stops at, which is
     the same defect as a verification horizon one grid short of its witness.
+    Every number here is read by :func:`_best_margin`; :func:`free_margin_cross`
+    is the same census under a second reader that shares none of its bounds.
     """
     if max_period < 2:
         raise ValueError("the census needs at least one period to measure")
@@ -1043,6 +1111,94 @@ def free_margin_census(max_period: int = 1200, reduced: bool = True) -> dict:
         "below": below,
         "first_free": first_free,
         "best": best,
+        "verdict": verdict,
+    }
+
+
+def free_margin_cross(max_period: int = 1200, reduced: bool = True) -> dict:
+    """The census read by both readers, period by period, looking for a split.
+
+    A number produced by one instrument is a claim about that instrument.
+    ``1080`` is the first carrier period to cross, and that is what
+    :func:`_best_margin` says: a pruned depth-first walk whose speed depends on
+    a bound, and a bound that is wrong in the *optimistic* direction -- too
+    small -- silently discards the crossing.  So the same question is asked
+    again by :func:`_best_margin_by_lcm`, which shares no bound with it, and
+    the two readings are compared at every period instead of at the end.
+
+    A disagreement is not a tie to break: it is the horizon narrowed to one
+    period, which is then the only thing worth reading.  Every block either
+    reader returns is also asked to reproduce its own margin through
+    :func:`free_margin`, so a witness that survives the comparison on the
+    number and contradicts it on the arithmetic is reported as well.
+
+    Measured: agree on all ``590`` periods to ``1200`` in both universes, and
+    on all ``1500`` to ``3000``.
+    """
+    if max_period < 2:
+        raise ValueError("the cross-read needs at least one period to measure")
+    name = "carriers" if reduced else "divisors"
+    measured = 0
+    disagreements: list[dict] = []
+    broken: list[dict] = []
+    on_line: list[int] = []
+    crossed: list[dict] = []
+    first_free: dict | None = None
+    for period in range(2, max_period + 1, 2):
+        pool = universe(period) if reduced else grids(period)
+        by_search, block_search = _best_margin(pool)
+        by_lcm, block_lcm = _best_margin_by_lcm(pool)
+        if by_search is None and by_lcm is None:
+            continue
+        measured += 1
+        if by_search != by_lcm:
+            disagreements.append({"period": period, "by_search": by_search,
+                                  "by_lcm": by_lcm,
+                                  "block_search": block_search,
+                                  "block_lcm": block_lcm})
+        for block, claimed in ((block_search, by_search),
+                               (block_lcm, by_lcm)):
+            if block and free_margin(block) != claimed:
+                broken.append({"period": period, "block": block,
+                               "claimed": claimed,
+                               "recomputed": free_margin(block)})
+        if by_lcm == 0:
+            on_line.append(period)
+        if by_lcm is not None and by_lcm > 0:
+            row = {"period": period, "block": block_lcm, "margin": by_lcm,
+                   "parts": len(block_lcm)}
+            crossed.append(row)
+            if first_free is None:
+                first_free = row
+    if measured == 0:
+        verdict = (f"nothing was measured: no period up to {max_period} over "
+                   f"the {name} had two incomparable grids, so agreement over "
+                   f"zero periods is NO_MEDIDO and not a result")
+    elif disagreements:
+        first = disagreements[0]
+        verdict = (f"the readers split at {first['period']}: search reads "
+                   f"{first['by_search']} on {first['block_search']}, lcm reads "
+                   f"{first['by_lcm']} on {first['block_lcm']}, and "
+                   f"{len(disagreements)} of {measured} periods disagree, so "
+                   f"the horizon is the period and not the census")
+    elif broken:
+        verdict = (f"the readers agree on all {measured} periods to "
+                   f"{max_period}, but {len(broken)} witness(es) contradict "
+                   f"their own margin, first {broken[0]['block']} at "
+                   f"{broken[0]['period']}")
+    else:
+        verdict = (f"the two readers agree on all {measured} periods to "
+                   f"{max_period} over the {name}, and every witness "
+                   f"reproduces its own margin")
+    return {
+        "universe": name,
+        "max_period": max_period,
+        "periods_measured": measured,
+        "on_line": tuple(on_line),
+        "crossed": tuple(crossed),
+        "first_free": first_free,
+        "disagreements": tuple(disagreements),
+        "broken_witnesses": tuple(broken),
         "verdict": verdict,
     }
 
