@@ -52,6 +52,7 @@ from .pricing import (PriceFormCensus, antichain_saving_ceiling,
                       block_fee_closed, block_free, block_of, block_saving,
                       band_slack, band_window, carrier_block_of,
                       carrier_block_saving, cofactor_block, exactness_frontier,
+                      free_margin, free_margin_census,
                       excess_parity, extremal_census, fee_frontier_by_blocks,
                       fee_frontier_census, frontier_by_blocks,
                       heaviest_antichain, maximal_divisors,
@@ -67,7 +68,7 @@ from .solve import (OK, PROBES_INSUFFICIENT, UNDERCOVERED,
                     InfeasibleWithinBudget, Schedule, ladder,
                     solve_lattice_schedule)
 
-__version__ = "0.20.0"
+__version__ = "0.21.0"
 
 __all__ = [
     "Ceiling",
@@ -83,6 +84,8 @@ __all__ = [
     "block_advantage",
     "block_free",
     "cofactor_block",
+    "free_margin",
+    "free_margin_census",
     "arity_ladder_census",
     "block_fee",
     "block_fee_closed",

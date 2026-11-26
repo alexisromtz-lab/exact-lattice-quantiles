@@ -41,8 +41,11 @@ is ``462 = 2 * 3 * 7 * 11``, on ``(42, 66, 154, 231)`` -- the cofactors of its
 primes.  Nothing above four buys anything, because a fee is a count and ``0``
 is its floor.  :func:`arity_ladder_census` measures that ladder, and
 :func:`block_free` explains its last rung: a block is free exactly when its
-parts are *dearer* than their lcm, which for the cofactors of ``L`` is Giuga's
-inequality ``sum 1/p > 1`` read one defect past the boundary.
+parts are *dearer* than their lcm by more than its odd parts are numerous,
+which for the cofactors of ``L`` is Giuga's inequality ``sum 1/p > 1`` read
+strictly past the boundary -- on the boundary itself the block pays exactly
+``1``, and :func:`free_margin` turns the distance into the integer a horizon
+can be checked against.
 """
 
 from __future__ import annotations
@@ -519,6 +522,32 @@ def block_free(parts: tuple[int, ...]) -> bool:
     return block_advantage(parts) > 0
 
 
+def free_margin(parts: tuple[int, ...]) -> int:
+    """How far a block is from free, as an integer that is zero on the line.
+
+    :func:`block_free` is this number's sign and nothing else, and a sign is
+    all a verdict needs.  The distance is what a *horizon* needs, and a fee
+    cannot supply it: ``block_fee`` divides the margin by twice one less part,
+    so on a triple the single fee ``1`` is charged for margin ``0`` and for
+    margin ``-2`` alike.  A census that reads fees therefore cannot tell a
+    period sitting exactly on the free line -- ready to cross at the next
+    multiple -- from one two below it, and that is how a published horizon
+    stopped at ``1000`` with the first carrier crossing at ``1080`` in plain
+    sight.
+
+    Doubling the advantage is the exact reading: ``2 * advantage = delta - k``
+    when the lcm is even and ``delta - (n - 1)`` when it is odd, so a block on
+    an odd lcm is free as soon as ``delta >= k`` while one on an even lcm needs
+    ``delta > k``.  No block sits on that difference in either universe up to
+    ``1200``, so the shorter reading ``delta - k`` measures the same thing
+    everywhere this package looks -- but the definition takes the exact form,
+    because a horizon argument is an inequality and not a census.
+    """
+    if len(parts) < 2:
+        raise ValueError("a block of one grid has no margin to be free by")
+    return 2 * block_advantage(parts)
+
+
 def cofactor_block(primes: tuple[int, ...]) -> tuple[int, ...]:
     """The block of the cofactors of ``L = prod(primes)``: one part per prime.
 
@@ -770,9 +799,14 @@ def arity_ladder_census(max_period: int = 1000, reduced: bool = False,
     already reach; the quadruple only earns where the triple stalls at one, and
     the first such period is ``462`` on the cofactors of ``2 * 3 * 7 * 11``.
     Over :func:`universe` -- the carriers, which is the package's default -- no
-    period up to ``1000`` reaches zero at all.  Both readings are published:
-    a free block is a reciprocal sum over the complementary divisors passing
-    ``1``, and whether that happens at three parts or at four is a property of
+    period up to ``1000`` reaches zero at all, and the first that does is
+    ``1080`` on ``(54, 90, 135)``: nine times the Giuga triple, free by scaling
+    rather than by arity.  That crossing is what :func:`free_margin_census`
+    measures, and the ``80`` periods between the two numbers are the price of
+    reading a horizon off a fee instead of off the distance.
+    Both readings are published: a free block is a reciprocal sum over the
+    complementary divisors passing ``1`` by more than the share of its odd
+    parts, and whether that happens at three parts or at four is a property of
     the universe, not of the fee.
 
     This is the census the fee frontier was missing.  Its sister
@@ -895,9 +929,120 @@ def arity_ladder_census(max_period: int = 1000, reduced: bool = False,
             "a fee is a minimum over blocks, so a bigger block can only lower "
             "it, and it stops at zero, which is also where it stops earning; a "
             "block is free exactly when the reciprocal sum over its "
-            "complementary divisors passes 1, no pair can do that (1/2 + 1/3 < "
-            "1), and the free rung therefore needs three parts at least and "
-            "nothing above four"),
+            "complementary divisors passes 1 by more than the fraction of its "
+            "parts that are odd, no pair can do that (1/2 + 1/3 < 1), and the "
+            "free rung therefore needs three parts at least and nothing above "
+            "four"),
+        "verdict": verdict,
+    }
+
+
+def _best_margin(items: tuple[int, ...]) -> tuple[int | None, tuple[int, ...]]:
+    """Largest :func:`free_margin` over every antichain of ``items``, by search.
+
+    Exhaustive by construction rather than by horizon: the recursion walks the
+    antichains of the universe itself, so there is no ``exhaustive_until`` to
+    calibrate and no verification gap for a witness to hide in.  A block of one
+    part is skipped -- a single grid is never a block -- and the bound
+    ``2 * (halves + rest) - lcm`` can only overestimate a descendant, because
+    the lcm never shrinks along a branch and the parity term it drops only ever
+    helps.
+    """
+    pool = tuple(sorted(set(items)))
+    size = len(pool)
+    if size < 2:
+        return None, ()
+    apart = tuple(tuple(i != j and pool[i] % pool[j] and pool[j] % pool[i]
+                        for j in range(size))
+                  for i in range(size))
+    best: int | None = None
+    block: tuple[int, ...] = ()
+
+    def walk(start: int, chosen: tuple[int, ...], span: int, halves: int) -> None:
+        nonlocal best, block
+        if len(chosen) >= 2:
+            margin = 2 * halves - span + (span & 1)
+            if best is None or margin > best:
+                best, block = margin, tuple(pool[j] for j in chosen)
+        if start == size:
+            return
+        rest = sum(pool[j] // 2 for j in range(start, size)
+                   if all(apart[j][c] for c in chosen))
+        if best is not None and 2 * (halves + rest) - span <= best:
+            return
+        for j in range(start, size):
+            if all(apart[j][c] for c in chosen):
+                walk(j + 1, chosen + (j,), lcm(span, pool[j]),
+                     halves + pool[j] // 2)
+
+    walk(0, (), 1, 0)
+    return best, block
+
+
+def free_margin_census(max_period: int = 1200, reduced: bool = True) -> dict:
+    """The free line read in units of its own distance, not in fees.
+
+    :func:`arity_ladder_census` asks where the floor stops being one; this asks
+    the same question with the integer that decides it, and the two answers are
+    not congruent because a fee is a floored quotient.  Two rows come out, and
+    the first is the one a fee cannot see: ``on_line`` collects the periods
+    whose best block has margin exactly ``0``, which are the periods *touching*
+    the free line -- free at the next multiple, paying ``1`` today.
+
+    Measured over the carriers to ``1200``: nineteen periods touch the line,
+    every one of them a multiple of ``60`` and every one of them on
+    ``(6, 10, 15)`` -- the Giuga triple, whose defect equals its single odd
+    part exactly.  Exactly one period crosses, ``1080 = 18 * 60``, on
+    ``(54, 90, 135) = 9 * (6, 10, 15)`` with margin ``8``: the freeness comes
+    from scaling, not from a fourth part.  Over the divisors the line is
+    touched at ``30`` and ``858`` -- the two smallest Giuga numbers inside the
+    horizon, each on its own cofactor block -- and crossed from ``60`` on.
+
+    The horizon has to reach the witness, and this one is chosen to: ``1080``
+    sits eighty periods past the ``1000`` a fee-read census stops at, which is
+    the same defect as a verification horizon one grid short of its witness.
+    """
+    if max_period < 2:
+        raise ValueError("the census needs at least one period to measure")
+    on_line: list[dict] = []
+    below = 0
+    first_free: dict | None = None
+    best: dict | None = None
+    measured = 0
+    for period in range(2, max_period + 1, 2):
+        pool = universe(period) if reduced else grids(period)
+        margin, block = _best_margin(pool)
+        if margin is None:
+            continue
+        measured += 1
+        if margin == 0:
+            on_line.append({"period": period, "block": block})
+        elif margin < 0:
+            below += 1
+        if margin > 0 and first_free is None:
+            first_free = {"period": period, "parts": len(block), "block": block,
+                          "margin": margin, "universe_size": len(pool)}
+        if best is None or margin > best["margin"]:
+            best = {"period": period, "block": block, "margin": margin,
+                    "universe_size": len(pool)}
+    name = "carriers" if reduced else "divisors"
+    if first_free is None:
+        verdict = (f"NO_PERIOD_CROSSES: over the {name} the best margin is "
+                   f"{best['margin'] if best else 'NO_MEDIDO'} up to "
+                   f"{max_period}, so this horizon stops on or below the line")
+    else:
+        verdict = (f"the {name} cross the free line at {first_free['period']} "
+                   f"on {first_free['block']} with margin "
+                   f"{first_free['margin']}, after {len(on_line)} periods "
+                   f"touching it at margin 0")
+    return {
+        "universe": name,
+        "max_period": max_period,
+        "periods_measured": measured,
+        "on_line": tuple(on_line),
+        "below": below,
+        "first_free": first_free,
+        "best": best,
         "verdict": verdict,
     }
 

@@ -28,7 +28,8 @@ from exact_lattice_quantiles import (arity_ladder_census, block_advantage,
                                      block_defect, block_fee, block_fee_closed,
                                      block_free, cofactor_block,
                                      fee_frontier_by_blocks,
-                                     fee_frontier_census, grids, universe)
+                                     fee_frontier_census, free_margin,
+                                     free_margin_census, grids, universe)
 from exact_lattice_quantiles.cli import main
 
 
@@ -423,3 +424,118 @@ class TheFourthPart(unittest.TestCase):
                        "--exhaustive-until", "2"])
         self.assertEqual(rc, 4)
         self.assertIn("NO_MEDIDO", err.getvalue())
+
+
+class TheFreeMargin(unittest.TestCase):
+    """The distance to a free block, in the integer the sign throws away.
+
+    ``block_free`` is a predicate and a predicate cannot be read as a horizon:
+    the census that asks "where does the floor stop being one" answers in fees,
+    and a fee is a quotient.  The margin is the numerator, so the two questions
+    -- is this block free, and how far is this period from having a free block
+    -- part company exactly where a horizon needs them not to.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.carriers = free_margin_census(max_period=1200)
+        cls.divisors = free_margin_census(max_period=1200, reduced=False)
+
+    def test_the_margin_decides_freeness_and_keeps_the_distance(self):
+        self.assertEqual(free_margin((6, 10, 15)), 0)      # delta 1, one odd part
+        self.assertFalse(block_free((6, 10, 15)))
+        self.assertEqual(block_fee((6, 10, 15)), 1)
+        self.assertEqual(free_margin((12, 20, 30)), 2)     # delta 2, no odd part
+        self.assertTrue(block_free((12, 20, 30)))
+        self.assertEqual(block_fee((12, 20, 30)), 0)
+
+    def test_a_fee_is_the_margin_divided_away(self):
+        """Fee 1 is charged for margin 0 and margin -2 alike: the sign's distance
+        is invisible to a fee, which is why the horizon read on fees stopped
+        short of 1080 with the witness in reach."""
+        for period in range(2, 61, 2):
+            for pool in (universe(period), grids(period)):
+                for parts in self._antichains(pool):
+                    margin = free_margin(parts)
+                    self.assertEqual(margin % 2, 0)
+                    self.assertEqual(block_free(parts), margin > 0)
+                    self.assertEqual(block_fee(parts) == 0, margin > 0)
+
+    def test_the_search_is_the_answer_on_every_small_universe(self):
+        """The pruned walk is checked against enumeration, not trusted."""
+        from exact_lattice_quantiles.pricing import _best_margin
+        for period in range(2, 121, 2):
+            for pool in (universe(period), grids(period)):
+                truth = [free_margin(parts) for parts in self._antichains(pool)]
+                margin, block = _best_margin(pool)
+                if not truth:
+                    self.assertIsNone(margin)
+                    continue
+                self.assertEqual(margin, max(truth), f"period {period}")
+                self.assertEqual(free_margin(block), margin)
+
+    def test_scaling_buys_the_crossing_and_never_a_fourth_part(self):
+        """delta and the lcm scale, the count of odd parts does not, so
+        margin(kA) = k * delta - (k even ? 0 : k(A)) and nine times the Giuga
+        triple is free while the triple itself pays one."""
+        giuga = (6, 10, 15)
+        for k in (1, 2, 3, 4):
+            scaled = tuple(k * part for part in giuga)
+            self.assertEqual(free_margin(scaled), k if k % 2 == 0 else k - 1)
+        self.assertEqual(len(self.carriers["first_free"]["block"]), 3)
+
+    def test_only_four_scalings_enter_the_carriers_below_4000(self):
+        """The README's lambda table: which multiples of the Giuga triple the
+        carriers admit at all, and that each of them arrives free."""
+        pools = [set(universe(period)) for period in range(2, 4001, 2)]
+        admitted = [k for k in range(2, 23)
+                    if any(all(k * part in pool for part in (6, 10, 15))
+                           for pool in pools)]
+        self.assertEqual(admitted, [9, 14, 18, 22])
+        for k in admitted:
+            self.assertGreater(free_margin((6 * k, 10 * k, 15 * k)), 0)
+
+    def test_the_carriers_touch_the_line_and_cross_at_1080(self):
+        first = self.carriers["first_free"]
+        self.assertEqual((first["period"], first["block"], first["margin"]),
+                         (1080, (54, 90, 135), 8))
+        self.assertEqual(sorted({r["block"] for r in self.carriers["on_line"]}),
+                         [(6, 10, 15)])
+        self.assertEqual([r["period"] for r in self.carriers["on_line"]],
+                         [p for p in range(60, 1201, 60) if p != 1080])
+
+    def test_a_horizon_read_on_fees_is_eighty_periods_short(self):
+        """The number that makes this an instrument and not a restatement: at
+        1000 there is no free carrier block, at 1080 there is one."""
+        self.assertIsNone(free_margin_census(max_period=1000)["first_free"])
+        self.assertEqual(
+            free_margin_census(max_period=1080)["first_free"]["period"], 1080)
+
+    def test_the_divisors_zero_on_the_giuga_numbers(self):
+        self.assertEqual([r["period"] for r in self.divisors["on_line"]],
+                         [30, 858])
+        self.assertEqual(self.divisors["first_free"]["period"], 60)
+
+    def test_the_command_crosses_and_says_so(self):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = main(["free-margin"])
+        self.assertEqual((rc, err.getvalue()), (0, ""))
+        self.assertIn("1080", out.getvalue())
+        self.assertIn("(54, 90, 135)", out.getvalue())
+
+    def test_a_horizon_with_no_block_at_all_is_not_measured(self):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = main(["free-margin", "--max-period", "2"])
+        self.assertEqual(rc, 4)
+        self.assertIn("NO_MEDIDO", err.getvalue())
+
+    @staticmethod
+    def _antichains(pool):
+        pool = tuple(sorted(set(pool)))
+        for size in range(2, len(pool) + 1):
+            for parts in combinations(pool, size):
+                if not any(max(a, b) % min(a, b) == 0
+                           for a, b in combinations(parts, 2)):
+                    yield parts
