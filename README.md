@@ -876,6 +876,11 @@ Three statements come out of it, and the first one corrects the package:
   nine times the Giuga triple and costs nothing while the triple pays `1`. A fee
   cannot see that distance, which is why the instrument that measures it is the
   margin and not the fee.
+- **The crossing survives a second reader that shares no bound.** Grouping blocks
+  by their lcm instead of walking antichains -- same maximum, no objective bound
+  to be wrong -- reads the same `1080` and splits on no period in either universe,
+  and the plausible shortcut of blocking only the maximal grids would have read
+  `-20` on `U(60)` where the truth is `0`.
 
 The reason a block can be free at all is an inversion worth stating plainly: the
 block is cheaper than buying each part, *and* its parts are dearer than the one
@@ -973,9 +978,9 @@ free margin: the distance to a free block, in integers
 
 Nineteen periods *touch* the line, every one of them a multiple of `60`, and every
 one of them on the same block `(6, 10, 15)` -- the Giuga triple, whose defect
-equals its single odd part exactly. One period crosses, `1080 = 18 * 60`, on
-`(54, 90, 135) = 9 * (6, 10, 15)`: **the carriers reach free by scaling, not by
-adding a part.** The block is the same three parts multiplied by nine, and it is
+equals its single odd part exactly. The first period to cross is `1080 = 18 * 60`,
+on `(54, 90, 135) = 9 * (6, 10, 15)`: **the carriers reach free by scaling, not
+by adding a part.** The block is the same three parts multiplied by nine, and it is
 in `U(1080)` because `1080` is divisible by all three of them.
 
 The mechanism is one line of algebra. The defect and the lcm both scale,
@@ -1004,7 +1009,7 @@ free margin: the distance to a free block, in integers
 
 Two universes again, and this time the numbers say what the fees only hinted at:
 the divisor lattice *leaves* the line at `60`, while the carrier lattice sits on it
-nineteen times and only `1080` gets past.
+nineteen times and only `1080` gets past inside this horizon.
 
 `free-margin` exits `RC 0` when its own witness reproduces -- the block is in the
 universe, `block_free` agrees, and the margin is the one claimed -- `RC 1` when it
@@ -1012,6 +1017,85 @@ does not, and `RC 4` when the horizon had no pair of incomparable grids at all, 
 nothing was measured. There is no `--exhaustive-until` here on purpose: the search
 walks every antichain of the universe itself, so its horizon is the horizon and
 not a calibration of one.
+
+#### Read twice: the same crossing by lcm, without a bound
+
+Every number above comes out of one instrument, and an instrument's number is a
+claim about the instrument. The search is a depth-first walk whose cost is paid
+by a bound -- `2 * (halves + rest) - span <= best` -- and that bound is where a
+bug would live: too small and it silently drops the crossing, and the census
+reports a floor the universe does not have. So the question is asked again by a
+reader that shares nothing with it. A margin is fixed by the block
+(`2 * sum(a // 2) - lcm`), so the blocks partition by their lcm, and every member
+of a block of lcm `L` must divide `L`: the candidates are known before any choice
+is made, each class is small enough to enumerate whole, and **there is no
+objective bound at all** -- the only cut left is structural. A wrong bound hides
+one block; it cannot hide a class.
+
+```
+$ exact-lattice-quantiles cross-read
+cross-read: the free margin by search and by lcm class
+  horizon                 1200            carriers universe, 590 periods read twice
+  by search               pruned DFS      walk over antichains, cut by an objective bound
+  by lcm                  class by class  every block of lcm L, enumerated whole, no bound to be wrong
+  disagreements           0               none
+  witnesses               0               blocks that fail to reproduce their own margin
+  first crossing by lcm   1080            (54, 90, 135), margin 8, 3 parts
+  on the line by lcm      19              60, 120, 180, 240, 300, 360, 420, 480
+  crossed by lcm          1               1080 (8)
+  verdict  the two readers agree on all 590 periods to 1200 over the carriers, and every witness reproduces its own margin
+```
+
+The classes are built from the closure of `lcm` over the universe and not from
+pairs, because three grids can reach an lcm no pair of them reaches:
+`lcm(2, 3, 5) = 30` is the lcm of no pair of `{2, 3, 5}`, so a horizon generated
+pair by pair would skip the Giuga triple while agreeing on everything around it.
+
+Agreement is only half the claim; the other half is that the second reader
+*would* have caught the bug. Take the plausible simplification -- only maximal
+grids are worth blocking -- and it reads `-20` on `U(60)`, where the truth is `0`
+on `(6, 10, 15)`: the line at `60` lives strictly below the maxima, and a reader
+that looks only at the top of the lattice cannot see it. A test states exactly
+that, so the cross-read is not a page of green: it is an instrument whose
+disagreement is a measured possibility.
+
+Read far enough and the crossings are more than one. To `3000` there are three,
+and every one of them is the Giuga triple scaled:
+
+| period | block | `k` | margin |
+|---|---|---|---|
+| `1080` | `(54, 90, 135)` | 9 | 8 (`k - 1`, odd `k`) |
+| `2160` | `(108, 180, 270)` | 18 | 18 (`k`, even `k`) |
+| `2520` | `(84, 140, 210)` | 14 | 14 (`k`, even `k`) |
+
+Over the divisors the second reader puts a name on the line. Extended to `2400`
+the divisor line is touched at `30`, `858` and `1722` and **nowhere else**, on
+`(6, 10, 15)`, `(66, 78, 286, 429)` and `(42, 246, 574, 861)` -- the cofactor
+blocks of `2*3*5`, `2*3*11*13` and `2*3*7*41`, which are the three smallest Giuga
+numbers:
+
+```
+$ exact-lattice-quantiles cross-read --universe divisors --max-period 2400
+cross-read: the free margin by search and by lcm class
+  horizon                 2400            divisors universe, 1189 periods read twice
+  by search               pruned DFS      walk over antichains, cut by an objective bound
+  by lcm                  class by class  every block of lcm L, enumerated whole, no bound to be wrong
+  disagreements           0               none
+  witnesses               0               blocks that fail to reproduce their own margin
+  first crossing by lcm   60              (12, 20, 30), margin 2, 3 parts
+  on the line by lcm      3               30, 858, 1722
+  crossed by lcm          99              60 (2), 90 (2), 120 (4), 150 (4), 180 (6), 210 (36)
+  verdict  the two readers agree on all 1189 periods to 2400 over the divisors, and every witness reproduces its own margin
+```
+
+That row is a prediction that was written before the sweep: if the zeros of the
+divisor line are Giuga's equation `sum 1/p - 1/L = 1`, the third Giuga number is
+on the line and nothing else is. It is, and nothing else does.
+
+`cross-read` exits `RC 0` when the two readers agree and every witness reproduces
+its own margin, `RC 1` when they split or a witness contradicts itself -- the
+horizon then is the period, not the census -- and `RC 4` when no period had two
+incomparable grids to read at all.
 
 #### The fee of a block is not a search: it is half its defect
 
@@ -1536,8 +1620,8 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 428 tests
-exact-lattice-quantiles --self-test           # 116 checks, RC 0
+python -m unittest discover -s tests -t .     # 435 tests
+exact-lattice-quantiles --self-test           # 118 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,

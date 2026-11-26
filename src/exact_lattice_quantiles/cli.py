@@ -44,7 +44,7 @@ from .pricing import (antichain_saving_ceiling, arity_ladder_census, band_slack,
                       block_fee, block_fee_closed, block_free,
                       block_of, block_saving,
                       carrier_block_of, carrier_block_saving, cofactor_block,
-                      free_margin, free_margin_census,
+                      free_margin, free_margin_census, free_margin_cross,
                       excess_parity, exactness_frontier, extremal_census,
                       fee_frontier_by_blocks, fee_frontier_census,
                       heaviest_antichain,
@@ -952,6 +952,64 @@ def _print_odd_band(max_omega: int, max_prime: int, slack: int | None,
     return RC_ABOVE_CEILING if census["candidates"] else RC_OK
 
 
+def _print_cross_read(max_period: int, reduced: bool, as_json: bool) -> int:
+    """The free-margin census read by a second, structurally independent reader.
+
+    ``RC_ABOVE_CEILING`` when the readers disagree on a period or a witness
+    contradicts its own margin -- either one narrows the horizon to that
+    period -- and ``RC_NO_MEDIDO`` when no period in the horizon had two
+    incomparable grids.  Agreement is the result: it is the census earned
+    twice, not the census assumed once.
+    """
+    row = free_margin_cross(max_period=max_period, reduced=reduced)
+    if as_json:
+        print(json.dumps(row, indent=2, sort_keys=True))
+    else:
+        def line(label: str, value: str, note: str = "") -> str:
+            return f"  {label:<24}{value:<16}{note}"
+
+        print("cross-read: the free margin by search and by lcm class")
+        print(line("horizon", str(row["max_period"]),
+                   f"{row['universe']} universe, "
+                   f"{row['periods_measured']} periods read twice"))
+        print(line("by search", "pruned DFS",
+                   "walk over antichains, cut by an objective bound"))
+        print(line("by lcm", "class by class",
+                   "every block of lcm L, enumerated whole, no bound to be wrong"))
+        print(line("disagreements", str(len(row["disagreements"])),
+                   "first: " + str(row["disagreements"][0]["period"])
+                   if row["disagreements"] else "none"))
+        print(line("witnesses", str(len(row["broken_witnesses"])),
+                   "blocks that fail to reproduce their own margin"))
+        free = row["first_free"]
+        print(line("first crossing by lcm",
+                   "none in horizon" if free is None else str(free["period"]),
+                   "no block is free here" if free is None else
+                   f"{free['block']}, margin {free['margin']}, "
+                   f"{len(free['block'])} parts"))
+        print(line("on the line by lcm", str(len(row["on_line"])),
+                   ", ".join(str(p) for p in row["on_line"][:8]) or "none"))
+        print(line("crossed by lcm", str(len(row["crossed"])),
+                   ", ".join(f"{r['period']} ({r['margin']})"
+                             for r in row["crossed"][:6]) or "none"))
+        print(f"  verdict  {row['verdict']}")
+    for split in row["disagreements"]:
+        print(f"SPLIT: period {split['period']}, search {split['by_search']} on "
+              f"{split['block_search']}, lcm {split['by_lcm']} on "
+              f"{split['block_lcm']}", file=sys.stderr)
+    for broken in row["broken_witnesses"]:
+        print(f"REFUTED: {broken['block']} at period {broken['period']} claims "
+              f"margin {broken['claimed']} and recomputes "
+              f"{broken['recomputed']}", file=sys.stderr)
+    if row["disagreements"] or row["broken_witnesses"]:
+        return RC_ABOVE_CEILING
+    if row["periods_measured"] == 0:
+        print(f"NO_MEDIDO: no period up to {max_period} had two incomparable "
+              f"grids, so there is nothing to read twice", file=sys.stderr)
+        return RC_NO_MEDIDO
+    return RC_OK
+
+
 def _print_universes(max_period: int, as_json: bool) -> int:
     """The reciprocal sum against both universes: which one decides a period.
 
@@ -1343,6 +1401,13 @@ def _self_test() -> int:
            [row["period"] for row in
             free_margin_census(max_period=1200, reduced=False)["on_line"]]),
           (60, [30, 858]))
+    check("a second reader that shares no bound reads the same crossing",
+          (free_margin_cross(max_period=1200)["disagreements"],
+           free_margin_cross(max_period=1200)["first_free"]["period"]),
+          ((), 1080))
+    check("and the same Giuga triple on the divisor line, read by lcm alone",
+          free_margin_cross(max_period=2400, reduced=False)["on_line"],
+          (30, 858, 1722))
     check("and a chain answers with no frontier, not with a zero",
           (fee_frontier_by_blocks(4)["chain"],
            fee_frontier_by_blocks(6)["frontier"],
@@ -1582,6 +1647,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="the carriers U(T), where the line is touched at every multiple "
              "of 60 and crossed at 1080, or every divisor D(T)")
 
+    p_cross = sub.add_parser(
+        "cross-read",
+        help="the free-margin census read by a second reader: blocks grouped by "
+             "their lcm and enumerated whole, so no bound can hide a crossing")
+    p_cross.add_argument("--max-period", type=int, default=1200)
+    p_cross.add_argument(
+        "--universe", choices=("reduced", "divisors"), default="reduced",
+        help="the carriers U(T) or every divisor D(T), as in free-margin")
+
     p_univ = sub.add_parser(
         "universes",
         help="census the reciprocal sum against both universes, period by "
@@ -1667,6 +1741,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "free-margin":
             return _print_free_margin(args.max_period,
                                       args.universe == "reduced", args.json)
+        if args.command == "cross-read":
+            return _print_cross_read(args.max_period,
+                                     args.universe == "reduced", args.json)
         if args.command == "universes":
             return _print_universes(args.max_period, args.json)
     except MaskTableTooLarge as exc:
