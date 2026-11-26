@@ -27,6 +27,15 @@ and the formula stops being the price at ``setup = 1`` -- :func:`setup_fee_front
 finds that first fee and the request that breaks it, and the theorem behind it
 is one line: folding a block of ``k`` grids into its lcm saves ``k - 1`` fees
 and pays the rest of the bill with ``sum(b // 2) - lcm(b) // 2``.
+
+That identity has a consequence worth exporting: the fee at which a request
+breaks the formula is decided by an antichain alone, because the formula prices
+the *maximals* of a request, and :func:`block_fee` inverts the identity in one
+integer division.  So the frontier of a period is a minimum over its antichains
+rather than a walk over fees, and :func:`fee_frontier_census` tests the law that
+the minimum is always attained with two or three parts: a pair needs ``2`` and
+attains it at ``(2, 3)``, a fee of ``1`` needs a triple, and a universe that is a
+chain -- no antichain at all -- never breaks.
 """
 
 from __future__ import annotations
@@ -417,6 +426,182 @@ def setup_fee_frontier(period: int, reduced: bool = True,
             "advantage(B, setup) = setup * (len(B) - 1) + sum(b // 2) - lcm(B) // 2; "
             "an incomparable pair sits at -1 or below on a zero fee, so no fee "
             "below 2 lets a pair win"),
+        "verdict": verdict,
+    }
+
+
+def block_fee(parts: tuple[int, ...]) -> int:
+    """The least fixed cost per grid at which the block beats buying its parts.
+
+    ``block_advantage`` is affine in the fee with slope ``len(parts) - 1``, so
+    the least fee that turns it positive is one integer division away, and a
+    block that is already cheaper with no fee charged reports ``0``.
+    """
+    if len(parts) < 2:
+        raise ValueError("a block of one grid saves nothing and is not a block")
+    advantage = block_advantage(parts)
+    return 0 if advantage > 0 else (-advantage) // (len(parts) - 1) + 1
+
+
+def _antichains(U: tuple[int, ...], arity: int):
+    """Every antichain of ``U`` with two to ``arity`` parts, in universe order.
+
+    Only an antichain can make the closed form wrong: it prices the maximals of
+    a request, so a part that divides another is never priced separately.
+    """
+    for k in range(2, min(arity, len(U)) + 1):
+        for A in combinations(U, k):
+            if all(max(x, y) % min(x, y) for x, y in combinations(A, 2)):
+                yield A
+
+
+def fee_frontier_by_blocks(period: int, reduced: bool = True,
+                           arity: int = 3) -> dict:
+    """The least fee per grid at which an antichain of at most ``arity`` parts wins.
+
+    The closed form is wrong on a request exactly when some antichain of that
+    request is cheaper bought as one grid than bought apart, and the fee at
+    which that happens is :func:`block_fee` of the antichain.  So the frontier of
+    a period is the minimum of that over the antichains of its universe -- and
+    the claim this function lets a census test is that the minimum is always
+    attained with two or three parts, never four.
+    """
+    if arity < 2:
+        raise ValueError("arity counts parts of a block, so it starts at two")
+    U = universe(period) if reduced else grids(period)
+    best, witness = None, ()
+    for A in _antichains(U, arity):
+        fee = block_fee(A)
+        if best is None or fee < best:
+            best, witness = fee, A
+            if best == 0:
+                break
+    return {
+        "period": period,
+        "universe": "reduced" if reduced else "divisors",
+        "universe_size": len(U),
+        "arity": arity,
+        "frontier": best,
+        "witness": witness,
+        "chain": best is None,
+    }
+
+
+def _exhaustive_fee(U: tuple[int, ...]) -> tuple[int | None, tuple[int, ...]]:
+    """The frontier over *every* antichain of ``U``, whatever its size."""
+    best, witness = None, ()
+    for A in _antichains(U, len(U)):
+        fee = block_fee(A)
+        if best is None or fee < best:
+            best, witness = fee, A
+            if best == 0:
+                break
+    return best, witness
+
+
+def fee_frontier_census(max_period: int = 2000, reduced: bool = True,
+                        arity: int = 3, verify_universe: int = 14) -> dict:
+    """The fee frontier over a whole range of periods, with its law and its check.
+
+    Two questions, kept apart.  The **law** is the minimum over antichains of at
+    most ``arity`` parts and it is computed for every period, in time
+    polynomial in the size of the universe.  The **check** is exhaustive over
+    every antichain of any size, and it is only affordable while the universe is
+    small, so it runs on the periods with ``|U| <= verify_universe`` and the
+    census publishes how many those are rather than pretending to all.
+
+    Three states come out of it, and they are not the same answer.  A period
+    whose universe is a chain has **no** antichain at all, so no fee ever makes
+    the closed form wrong there -- and measured to 2000 those are exactly the
+    ten powers of two, which is the half that can be argued (the divisors of
+    ``2^k`` are totally ordered, so no antichain exists) with the converse left
+    to the census.  A frontier of ``1``
+    needs a triple, because an incomparable pair sits at ``-1`` or below on a
+    zero fee (``lcm`` of two incomparable grids is at least twice the larger, so
+    the block's price never drops under the sum of theirs).  Everything above
+    ``1`` is a pair failing, and the first such period is ``6``, where ``(2, 3)``
+    costs ``2`` apart and ``3`` whole: a fee of two is exactly what it takes.
+    """
+    if max_period < 2:
+        raise ValueError("the census needs at least one even period")
+    if verify_universe < 2:
+        raise ValueError("a universe of one grid has no antichain to verify")
+    period_rows, mismatches, chains, at_zero, at_one = [], [], [], [], []
+    verified, largest, witness_sizes = 0, None, {}
+    for period in range(2, max_period + 1, 2):
+        row = fee_frontier_by_blocks(period, reduced=reduced, arity=arity)
+        period_rows.append(row)
+        if row["frontier"] is None:
+            chains.append(period)
+        else:
+            if row["frontier"] == 0:
+                at_zero.append(period)
+            elif row["frontier"] == 1:
+                at_one.append((period, row["witness"]))
+            if largest is None or row["frontier"] > largest["frontier"]:
+                largest = {"period": period, "frontier": row["frontier"],
+                           "witness": row["witness"]}
+        if row["universe_size"] <= verify_universe:
+            verified += 1
+            truth, truth_witness = _exhaustive_fee(
+                universe(period) if reduced else grids(period))
+            if truth != row["frontier"]:
+                mismatches.append({"period": period, "law": row["frontier"],
+                                   "exhaustive": truth,
+                                   "exhaustive_witness": truth_witness})
+            elif truth is not None:
+                size = len(truth_witness)
+                witness_sizes[size] = witness_sizes.get(size, 0) + 1
+    universe_name = "U(T)" if reduced else "D(T)"
+    if verified == 0:
+        verdict = (
+            f"NO_MEDIDO: no period up to {max_period} has a universe of at most "
+            f"{verify_universe} grids, so the law was computed but never "
+            f"checked against the exhaustive frontier")
+    elif mismatches:
+        first = mismatches[0]
+        verdict = (
+            f"REFUTED: the law prices period {first['period']} at fee "
+            f"{first['law']} while the exhaustive frontier is "
+            f"{first['exhaustive']} -- a block of more than {arity} parts wins "
+            f"earlier than every block of at most {arity}")
+    else:
+        shapes = sorted({w for _, w in at_one})
+        if largest is None:
+            widest = ("no period in this horizon has an antichain, so no fee "
+                      "breaks any of them")
+        else:
+            widest = (f"the widest frontier is {largest['frontier']} at period "
+                      f"{largest['period']} on {tuple(largest['witness'])}")
+        verdict = (
+            f"the law holds on all {verified} period"
+            f"{'s' if verified != 1 else ''} of {universe_name} with at most "
+            f"{verify_universe} grids, witnesses of size "
+            f"{sorted(witness_sizes)}; {len(chains)} periods are chains where no "
+            f"fee breaks the formula, {len(at_zero)} break with no fee at all"
+            f"{' ' + str(at_zero) if at_zero else ''}, and {len(at_one)} break "
+            f"first at a fee of 1 on {len(shapes)} shape"
+            f"{'s' if len(shapes) != 1 else ''} "
+            f"{', '.join(str(s) for s in shapes) if shapes else '(none)'}; "
+            f"{widest}")
+    return {
+        "periods": len(period_rows),
+        "max_period": max_period,
+        "universe": universe_name,
+        "arity": arity,
+        "verify_universe": verify_universe,
+        "verified": verified,
+        "mismatches": mismatches,
+        "chains": tuple(chains),
+        "at_zero": tuple(at_zero),
+        "at_one": tuple(at_one),
+        "largest": largest,
+        "verified_witness_sizes": witness_sizes,
+        "rows": tuple(period_rows),
+        "theorem": (
+            "the frontier of a period is the minimal fee over its antichains; a "
+            "pair needs 2 and attains it at (2, 3); a triple can need only 1; "
+            "and a universe that is a chain never breaks"),
         "verdict": verdict,
     }
 

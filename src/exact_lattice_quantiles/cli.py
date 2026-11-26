@@ -37,10 +37,12 @@ from .lattice import (TABLE_BUDGET, MaskTableTooLarge, cell_widths,
                       grids, mask_table, period_of, universe)
 from .pricing import (antichain_saving_ceiling, band_slack, band_window,
                       block_catalogue,
-                      block_advantage, block_dominance_census, block_of,
-                      block_saving,
+                      block_advantage, block_dominance_census, block_fee,
+                      block_of, block_saving,
                       carrier_block_of, carrier_block_saving, excess_parity,
-                      exactness_frontier, extremal_census, heaviest_antichain,
+                      exactness_frontier, extremal_census,
+                      fee_frontier_by_blocks, fee_frontier_census,
+                      heaviest_antichain,
                       odd_band_census,
                       pair_antichain_of,
                       pair_antichain_saving, price_exact,
@@ -657,6 +659,64 @@ def _print_setup_fee(period: int, reduced: bool, max_setup: int,
     return RC_OK
 
 
+def _print_fee_census(max_period: int, reduced: bool, arity: int,
+                      verify_universe: int, as_json: bool) -> int:
+    """The fee frontier is a law: two parts cost 2, and a fee of 1 needs a triple.
+
+    ``RC_ABOVE_CEILING`` when the law misprices a period -- the package's own
+    census refuting a claim the package makes. ``RC_NO_MEDIDO`` when no period
+    was verified, because a law checked nowhere is not a law measured.
+    """
+    row = fee_frontier_census(max_period=max_period, reduced=reduced,
+                              arity=arity, verify_universe=verify_universe)
+    if as_json:
+        payload = {k: v for k, v in row.items() if k != "rows"}
+        payload["rows"] = list(row["rows"])
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        def line(label: str, value: str, note: str = "") -> str:
+            return f"  {label:<24}{value:<16}{note}"
+
+        print("fee census: the fee that breaks the closed form, period by period")
+        print(line("horizon", str(max_period),
+                   f"{row['universe']} universe, blocks of at most {arity} parts"))
+        print(line("periods", str(row["periods"]),
+                   f"{row['verified']} verified against every antichain "
+                   f"(|U| <= {verify_universe})"))
+        print(line("mismatches", str(len(row["mismatches"])),
+                   "periods where no block of that size attains the frontier"))
+        for m in row["mismatches"][:10]:
+            print(line(f"  period {m['period']}", str(m['exhaustive']),
+                       f"law says {m['law']} by {m['exhaustive_witness']}"))
+        print(line("chains", str(len(row["chains"])),
+                   "no antichain at all: no fee breaks these"))
+        print(line("at zero", str(len(row["at_zero"])),
+                   f"already broken at no fee {row['at_zero'][:7]}"))
+        print(line("at one", str(len(row["at_one"])),
+                   "break first at a fee of 1"))
+        largest = row["largest"]
+        print(line("widest frontier",
+                   "none" if largest is None else str(largest["frontier"]),
+                   "every period here is a chain" if largest is None else
+                   f"period {largest['period']} on {largest['witness']}"))
+        sizes = row["verified_witness_sizes"]
+        print(line("witness sizes",
+                   ", ".join(f"{k}: {v}" for k, v in sorted(sizes.items())),
+                   "on the verified periods"))
+        print(f"  verdict  {row['verdict']}")
+    if row["mismatches"]:
+        print(f"REFUTED: the block law misprices {len(row['mismatches'])} of "
+              f"{row['periods']} periods up to {max_period}",
+              file=sys.stderr)
+        return RC_ABOVE_CEILING
+    if row["verified"] == 0:
+        print(f"NO_MEDIDO: no period up to {max_period} had at most "
+              f"{verify_universe} grids, so the law was checked nowhere",
+              file=sys.stderr)
+        return RC_NO_MEDIDO
+    return RC_OK
+
+
 def _print_odd_band(max_omega: int, max_prime: int, slack: int | None,
                     as_json: bool) -> int:
     """The odd half of the band: a window through Giuga's equation, measured.
@@ -1047,6 +1107,18 @@ def _self_test() -> int:
           nearest["excess"] > nearest["threshold"], True)
     check("and that miss sits where the congruence says it must",
           walked["parity"]["consistent"], True)
+    check("a pair needs a fee of two and (2, 3) attains it",
+          (block_fee((2, 3)), block_fee((6, 10, 15)),
+           block_fee((4, 8))), (2, 1, 0))
+    law = fee_frontier_census(max_period=200, verify_universe=10)
+    check("the law holds on every period whose antichains were walked",
+          (law["mismatches"],
+           law["verified"] == sum(1 for r in law["rows"]
+                                  if r["universe_size"] <= 10)), ([], True))
+    check("and a chain answers with no frontier, not with a zero",
+          (fee_frontier_by_blocks(4)["chain"],
+           fee_frontier_by_blocks(6)["frontier"],
+           fee_frontier_by_blocks(180)["frontier"]), (True, 2, 1))
     universes = reciprocal_filter_census(400)
     check("every period below one is clean in both universes, not just one",
           (universes["proved"], universes["proved_without_break"]),
@@ -1235,6 +1307,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_setup.add_argument("--max-setup", type=int, default=4,
                          help="largest fee per grid the walk reaches")
 
+    p_fee = sub.add_parser(
+        "fee-census",
+        help="the fee at which the closed form breaks is always attained by a "
+             "block of two or three parts")
+    p_fee.add_argument("--max-period", type=int, default=2000)
+    p_fee.add_argument(
+        "--universe", choices=("reduced", "divisors"), default="reduced",
+        help="reduced carriers U(T), where the formula is exact at a zero fee, "
+             "or every divisor D(T), where it is already broken")
+    p_fee.add_argument("--arity", type=int, default=3,
+                       help="largest block the law is allowed to use")
+    p_fee.add_argument("--verify-universe", type=int, default=14,
+                       help="verify against every antichain when |U| is at most"
+                            " this (the cost is exponential in |U|)")
+
     p_univ = sub.add_parser(
         "universes",
         help="census the reciprocal sum against both universes, period by "
@@ -1301,6 +1388,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "setup-fee":
             return _print_setup_fee(args.period, args.universe == "reduced",
                                     args.max_setup, args.json)
+        if args.command == "fee-census":
+            return _print_fee_census(args.max_period,
+                                     args.universe == "reduced", args.arity,
+                                     args.verify_universe, args.json)
         if args.command == "verify-acta":
             return _print_verify_acta(args.manifest, args.json, args.source)
         if args.command == "odd-band":

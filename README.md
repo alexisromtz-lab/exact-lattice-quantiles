@@ -705,6 +705,66 @@ identity above is what a design should be compared against. It says the
 **formula** has a domain, the domain is `setup = 0`, and the package now
 publishes where it ends instead of assuming nobody bills a setup.
 
+#### The frontier is a law, and only a triple can be priced at one fee
+
+The `setup-fee` command walks the fee upwards on **one** period. The same
+question has a closed answer, and it is cheaper to compute than the walk: a
+request can only break the formula through an antichain -- the formula prices
+the *maximals* of a request, so a part that divides another is never priced
+apart -- and the fee at which an antichain `A` breaks it is `block_fee(A)`,
+which is `block_advantage` inverted in one integer division:
+
+```
+$ exact-lattice-quantiles fee-census
+fee census: the fee that breaks the closed form, period by period
+  horizon                 2000            U(T) universe, blocks of at most 3 parts
+  periods                 1000            909 verified against every antichain (|U| <= 14)
+  mismatches              0               periods where no block of that size attains the frontier
+  chains                  10              no antichain at all: no fee breaks these
+  at zero                 1               already broken at no fee (1080,)
+  at one                  51              break first at a fee of 1
+  widest frontier         499             period 1994 on (2, 997)
+  witness sizes           2: 889, 3: 10   on the verified periods
+  verdict  the law holds on all 909 periods of U(T) with at most 14 grids, witnesses of size [2, 3]; 10 periods are chains where no fee breaks the formula, 1 break with no fee at all [1080], and 51 break first at a fee of 1 on 2 shapes (6, 10, 15), (6, 14, 21); the widest frontier is 499 at period 1994 on (2, 997)
+```
+
+Four statements come out of it, and each one is a place the census could have
+failed:
+
+- **A fee of one needs a triple, and there are only two shapes.** In the whole
+  horizon only `(6, 10, 15)` and `(6, 14, 21)` break first at a fee of one --
+  `{2p, 2q, pq}` with `p = 3` and `q` equal to `5` or `7`. Both were already the
+  witnesses of the walk on period 180.
+- **A fee of two is what a pair costs, and `(2, 3)` attains it.** That is the
+  pair theorem of the section above, used here as the floor of the census
+  instead of as a footnote: no period breaks below two without a triple.
+- **Ten periods of a thousand are chains no fee can break**, and below 2000 they
+  are exactly the powers of two. That half is argued rather than searched: the
+  divisors of `2^k` are totally ordered, so `U(2^k)` has no antichain at all.
+  The census answers `chain` -- not a zero, which would claim a frontier of no
+  fee.
+- **`1080` breaks with no fee at all**, which is the break the carrier-block law
+  found from the other side. Two instruments, one number.
+
+The law is a minimum over antichains of at most three parts, which is cheap; the
+*check* is exhaustive over antichains of any size, which is not. So the census
+publishes `909` verified periods rather than pretending to `1 000`, and the check
+is the reason to trust the law outside them. Restricting the law to pairs is
+enough to refute it, and the refutation names exactly the periods a triple is
+needed for:
+
+```
+$ exact-lattice-quantiles fee-census --max-period 200 --arity 2 ; echo $?
+REFUTED: the block law misprices 5 of 100 periods up to 200
+  mismatches              5               periods where no block of that size attains the frontier
+    period 60             1               law says 2 by (6, 10, 15)
+    period 84             1               law says 2 by (6, 14, 21)
+1
+```
+
+`RC 1` is the package disagreeing with itself, and it exits on the periods where
+the third part is what wins.
+
 ### 5. A margin survives exactly zero drift
 
 The witness margin is a knife edge: the divisor that fixes it sits on the edge
@@ -1165,8 +1225,8 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 370 tests
-exact-lattice-quantiles --self-test           # 97 checks, RC 0
+python -m unittest discover -s tests -t .     # 389 tests
+exact-lattice-quantiles --self-test           # 100 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,
