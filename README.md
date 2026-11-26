@@ -630,6 +630,77 @@ agrees. Restricting the universe to `U(T)` is what makes the shortcut look
 right, and that restriction is a modelling decision, not a measurement --
 `price_form_census(period, reduced=False)` is the row that shows it.
 
+#### The formula also assumes no fixed cost per grid
+
+Every census above prices a grid at `grid // 2`. That is a hypothesis, not a
+fact about billing, and the formula does not state it. Charge a fixed cost
+`setup` per grid bought and the closed form -- which buys one grid per maximal
+divisor and never buys a block -- stops being the price at a fee of **one**:
+
+```
+$ exact-lattice-quantiles setup-fee
+setup fee: the closed form assumes a grid costs grid // 2 and nothing else
+  period                180           reduced universe, |U| 12, 4095 requests
+  fee                   discrepancies pairs  witness
+    0                   0                 0  -
+    1                   32                0  (6, 10, 15) by 2
+    2                   146               2  (6, 10, 15) by 4
+    3                   237               4  (6, 10, 15) by 6
+    4                   1697              8  (6, 10, 15) by 8
+  frontier              1             first fee per grid that breaks the closed form
+  pairs                 2             first fee at which a pair is what fails
+  theorem  advantage(B, setup) = setup * (len(B) - 1) + sum(b // 2) - lcm(B) // 2; an incomparable pair sits at -1 or below on a zero fee, so no fee below 2 lets a pair win
+  verdict  the closed form stops being the price at a fee of 1 per grid: 32 of 4095 requests, witness (6, 10, 15) costs 16 exact against 18 by the formula
+```
+
+One identity decides the whole column. Folding a block `B` into its least
+common multiple refunds one fee per folded grid and pays the rest with the
+parts' weight against the lcm's:
+
+```
+advantage(B, setup) = setup * (len(B) - 1) + sum(b // 2) - lcm(B) // 2
+```
+
+Two consequences, and the second is why the frontier has to be measured over
+every request of the instance rather than argued from pairs:
+
+- **The fee favours the big block.** A triple folds two fees, so the requests
+  that break first are triples, not pairs. The witness `(6, 10, 15)` has
+  `advantage = 0` at a zero fee -- it *tied* -- and the two refunded fees turn
+  the tie into a 2-point saving. That is why its gap grows by exactly
+  `len(B) - 1 = 2` per unit of fee, `2 4 6 8` in the column above.
+- **No pair can win below a fee of two.** For an incomparable pair
+  `lcm(a, b) >= a + b` makes `sum(b // 2) - lcm // 2` at most `-1`, so the
+  advantage stays at `0` or below for a fee of one, and `(2, 3)` attains the
+  bound exactly. A census that only looked at pairs would report the closed
+  form surviving one fee further than it does.
+
+On the divisors universe the formula is already broken at a zero fee, so the
+frontier is `0` and the witness is the block that breaks it there:
+
+```
+$ exact-lattice-quantiles setup-fee --universe divisors --max-setup 1
+    0                   9984              0  (36, 60, 90) by 3
+    1                   10016             0  (36, 60, 90) by 5
+  frontier              0             first fee per grid that breaks the closed form
+  pairs                 none          first fee at which a pair is what fails
+```
+
+And when the horizon never reaches a break, the command refuses to report a
+frontier it did not find -- `RC 4`, with the reason on stderr:
+
+```
+$ exact-lattice-quantiles setup-fee --max-setup 0 ; echo $?
+  verdict  NO_MEDIDO: no fee up to 0 breaks the closed form on period 180; the frontier is beyond the horizon, not absent
+4
+```
+
+A note on what this does *not* say: it does not say the exact price is wrong.
+`price_exact(period, request, setup=s)` prices every fee exactly, and the
+identity above is what a design should be compared against. It says the
+**formula** has a domain, the domain is `setup = 0`, and the package now
+publishes where it ends instead of assuming nobody bills a setup.
+
 ### 5. A margin survives exactly zero drift
 
 The witness margin is a knife edge: the divisor that fixes it sits on the edge
@@ -994,8 +1065,8 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 332 tests
-exact-lattice-quantiles --self-test           # 87 checks, RC 0
+python -m unittest discover -s tests -t .     # 349 tests
+exact-lattice-quantiles --self-test           # 92 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,
