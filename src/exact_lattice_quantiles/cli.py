@@ -37,13 +37,14 @@ from .coverage import (coverage_census, coverage_kernel, design_law, drift_law,
 from .arithmetic import primes_of
 from .lattice import (TABLE_BUDGET, MaskTableTooLarge, cell_widths,
                       grids, mask_table, period_of, universe)
-from .pricing import (antichain_saving_ceiling, band_slack, band_window,
+from .pricing import (antichain_saving_ceiling, arity_ladder_census, band_slack,
+                      band_window,
                       block_catalogue,
                       block_advantage, block_defect, block_dominance_census,
-                      block_fee, block_fee_closed,
+                      block_fee, block_fee_closed, block_free,
                       block_of, block_saving,
-                      carrier_block_of, carrier_block_saving, excess_parity,
-                      exactness_frontier, extremal_census,
+                      carrier_block_of, carrier_block_saving, cofactor_block,
+                      excess_parity, exactness_frontier, extremal_census,
                       fee_frontier_by_blocks, fee_frontier_census,
                       heaviest_antichain,
                       odd_band_census,
@@ -777,6 +778,66 @@ def _print_fee_census(max_period: int, reduced: bool, arity: int,
     return RC_OK
 
 
+def _print_arity_ladder(max_period: int, reduced: bool, arities: str,
+                        exhaustive_until: int, as_json: bool) -> int:
+    """How many parts the frontier needs, and where the free rung opens.
+
+    ``RC_ABOVE_CEILING`` when a rung above the top one still earns -- not
+    possible for a fee, since zero is the floor, so seeing it refutes the ladder
+    -- and ``RC_NO_MEDIDO`` when no period was verified against every antichain.
+    A horizon with no free block is *not* an error: it is the measured floor of
+    that universe, and the verdict says so in words.
+    """
+    rungs = tuple(int(part) for part in arities.replace(",", " ").split())
+    row = arity_ladder_census(max_period=max_period, reduced=reduced,
+                              arities=rungs or (2, 3, 4, 5),
+                              exhaustive_until=exhaustive_until)
+    if as_json:
+        payload = {k: v for k, v in row.items() if k != "exhaustive"}
+        payload["exhaustive"] = {k: v for k, v in row["exhaustive"].items()
+                                 if k != "rows"}
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        def line(label: str, value: str, note: str = "") -> str:
+            return f"  {label:<22}{value:<18}{note}"
+
+        print("arity ladder: how many parts the fee frontier needs")
+        print(line("horizon", str(row["max_period"]),
+                   f"{row['universe']} universe, rungs {row['arities']}"))
+        for step, periods in row["earnings"].items():
+            first = row["first"].get(step)
+            print(line(f"  {step}", str(len(periods)),
+                       "never earns" if first is None else
+                       f"first {first['period']} on {first['witness']} "
+                       f"({first['from_fee']} -> {first['to_fee']}, "
+                       f"{first['universe_size']} grids)"))
+        free = row["first_free"]
+        print(line("first free block",
+                   "none in horizon" if free is None else str(free["period"]),
+                   "every period here keeps a fee of at least one" if free is None
+                   else f"{free['witness']}, already free with {free['parts']} "
+                        f"part(s)"))
+        print(line("periods at zero", str(len(row["at_floor"])),
+                   "none in this horizon" if not row["at_floor"]
+                   else f"{row['at_floor'][:7]}"))
+        print(line("verified", str(row["exhaustive"]["verified"]),
+                   f"against every antichain (|U| <= {exhaustive_until})"))
+        print(line("mismatches", str(len(row["exhaustive"]["mismatches"])),
+                   "the ladder against the exhaustive frontier"))
+        print(f"  verdict  {row['verdict']}")
+    if row["exhaustive"]["mismatches"]:
+        print("REFUTED: the ladder is not the frontier on "
+              f"{len(row['exhaustive']['mismatches'])} period(s)",
+              file=sys.stderr)
+        return RC_ABOVE_CEILING
+    if row["exhaustive"]["verified"] == 0:
+        print(f"NO_MEDIDO: no period up to {max_period} had at most "
+              f"{exhaustive_until} grids, so the ladder was checked nowhere",
+              file=sys.stderr)
+        return RC_NO_MEDIDO
+    return RC_OK
+
+
 def _print_odd_band(max_omega: int, max_prime: int, slack: int | None,
                     as_json: bool) -> int:
     """The odd half of the band: a window through Giuga's equation, measured.
@@ -1187,6 +1248,32 @@ def _self_test() -> int:
     check("and where a triple does beat them all, the fee is at most one",
           len(law["pair_misses"]) == len(law["at_zero"]) + len(law["at_one"]),
           True)
+    check("a block whose parts are dearer than their lcm pays nothing at all",
+          (block_free((12, 20, 30)), block_fee((12, 20, 30)),
+           block_free((6, 10, 15)), block_fee((6, 10, 15))),
+          (True, 0, False, 1))
+    check("and no pair can ever get there: (2, 3) is the best two parts do",
+          (block_free((2, 3)), block_fee((2, 3))), (False, 2))
+    ladder = arity_ladder_census(max_period=500)
+    check("the ladder earns a fee of one from a triple and of two from a pair",
+          (ladder["earnings"]["2->3"][:2], ladder["first"]["2->3"]["witness"]),
+          ((30, 42), (6, 10, 15)))
+    check("the fourth part is free, and no fifth part buys anything",
+          (ladder["first"]["3->4"]["witness"], ladder["earnings"]["4->5"]),
+          ((42, 66, 154, 231), ()))
+    check("the free rung opens at 60, and three parts are enough to reach it",
+          (ladder["first_free"]["period"], ladder["first_free"]["parts"]),
+          (60, 3))
+    check("the ladder is the frontier wherever it could be checked",
+          (ladder["exhaustive"]["mismatches"],
+           ladder["exhaustive"]["verified"] > 0), ((), True))
+    check("over the carriers no period here reaches zero, and the census says so",
+          arity_ladder_census(max_period=500,
+                              reduced=True)["first_free"], None)
+    check("Giuga's equation is one defect short of free",
+          (block_defect(cofactor_block((2, 3, 7, 41))),
+           block_fee(cofactor_block((2, 3, 7, 41))),
+           block_free(cofactor_block((2, 3, 7, 11)))), (1, 1, True))
     check("and a chain answers with no frontier, not with a zero",
           (fee_frontier_by_blocks(4)["chain"],
            fee_frontier_by_blocks(6)["frontier"],
@@ -1401,6 +1488,21 @@ def build_parser() -> argparse.ArgumentParser:
                        help="verify against every antichain when |U| is at most"
                             " this (the cost is exponential in |U|)")
 
+    p_ladder = sub.add_parser(
+        "arity-ladder",
+        help="how many parts the fee frontier needs: the rungs 2 -> 3 -> 4, "
+             "and where the free rung first opens")
+    p_ladder.add_argument("--max-period", type=int, default=1000)
+    p_ladder.add_argument(
+        "--universe", choices=("reduced", "divisors"), default="divisors",
+        help="every divisor D(T), where a free block appears at 60, or the "
+             "carriers U(T), whose frontier never reached zero up to 1000")
+    p_ladder.add_argument("--arities", default="2,3,4,5",
+                          help="the rungs to climb, in order (2,3,4,5)")
+    p_ladder.add_argument("--exhaustive-until", type=int, default=15,
+                          help="check the ladder against every antichain when "
+                               "|U| is at most this; 15 is what reaches 462")
+
     p_univ = sub.add_parser(
         "universes",
         help="census the reciprocal sum against both universes, period by "
@@ -1478,6 +1580,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "odd-band":
             return _print_odd_band(args.max_omega, args.max_prime,
                                    args.slack, args.json)
+        if args.command == "arity-ladder":
+            return _print_arity_ladder(args.max_period,
+                                       args.universe == "reduced",
+                                       args.arities, args.exhaustive_until,
+                                       args.json)
         if args.command == "universes":
             return _print_universes(args.max_period, args.json)
     except MaskTableTooLarge as exc:

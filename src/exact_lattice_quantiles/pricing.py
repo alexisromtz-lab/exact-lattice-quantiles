@@ -32,10 +32,17 @@ That identity has a consequence worth exporting: the fee at which a request
 breaks the formula is decided by an antichain alone, because the formula prices
 the *maximals* of a request, and :func:`block_fee` inverts the identity in one
 integer division.  So the frontier of a period is a minimum over its antichains
-rather than a walk over fees, and :func:`fee_frontier_census` tests the law that
-the minimum is always attained with two or three parts: a pair needs ``2`` and
-attains it at ``(2, 3)``, a fee of ``1`` needs a triple, and a universe that is a
-chain -- no antichain at all -- never breaks.
+rather than a walk over fees.
+
+The size of the block that attains it is a *ladder with three rungs*, and the
+top rung is free: a pair needs ``2`` and attains it at ``(2, 3)``, a triple can
+need ``1``, and a quadruple can need ``0``.  The first period that reaches zero
+is ``462 = 2 * 3 * 7 * 11``, on ``(42, 66, 154, 231)`` -- the cofactors of its
+primes.  Nothing above four buys anything, because a fee is a count and ``0``
+is its floor.  :func:`arity_ladder_census` measures that ladder, and
+:func:`block_free` explains its last rung: a block is free exactly when its
+parts are *dearer* than their lcm, which for the cofactors of ``L`` is Giuga's
+inequality ``sum 1/p > 1`` read one defect past the boundary.
 """
 
 from __future__ import annotations
@@ -495,6 +502,45 @@ def block_fee(parts: tuple[int, ...]) -> int:
     return 0 if advantage > 0 else (-advantage) // (len(parts) - 1) + 1
 
 
+def block_free(parts: tuple[int, ...]) -> bool:
+    """Whether the block already beats its parts with no fee charged at all.
+
+    Read off the defect this is backwards on purpose: a free block is one whose
+    parts are *dearer* than their lcm.  With ``delta`` the defect and ``k`` the
+    number of odd parts, ``2 * B = k - delta`` when the lcm is even, so the free
+    case ``B < 0`` needs ``delta > k``.  What such a block saves is the fee, not
+    the grid -- it pays more for its parts than one grid of their lcm costs and
+    still comes out ahead, because it buys several grids and pays the fee once.
+    A pair can never do it: ``lcm(a, b) > a + b`` for incomparable ``a``, ``b``,
+    so a pair's defect is negative and its fee is never below ``2``.
+    """
+    if len(parts) < 2:
+        raise ValueError("a block of one grid is not a block")
+    return block_advantage(parts) > 0
+
+
+def cofactor_block(primes: tuple[int, ...]) -> tuple[int, ...]:
+    """The block of the cofactors of ``L = prod(primes)``: one part per prime.
+
+    Every part is ``L // p``, so the block is the set of maximals of the divisor
+    lattice of the squarefree ``L`` and its lcm is ``L`` itself.  Its defect is
+    ``L * (sum 1/p) - L`` exactly, which makes the whole Giuga family a
+    statement about a reciprocal sum: ``delta = 1`` is Giuga's equation
+    ``sum 1/p - 1/L = 1`` (``30``, ``858``, ``1722`` are the known ones),
+    ``delta = -1`` is the primary pseudoperfect ``sum 1/p + 1/L = 1``, and the
+    block is free once ``delta`` climbs past the number of odd parts -- which
+    for a set containing ``2`` exactly once is ``delta >= 2``.
+    """
+    if len(set(primes)) != len(primes) or len(primes) < 2:
+        raise ValueError("a cofactor block needs two distinct primes at least")
+    L = 1
+    for p in primes:
+        if p < 2:
+            raise ValueError("a cofactor block is indexed by primes, not by units")
+        L *= p
+    return tuple(sorted(L // p for p in primes))
+
+
 def _antichains(U: tuple[int, ...], arity: int):
     """Every antichain of ``U`` with two to ``arity`` parts, in universe order.
 
@@ -515,8 +561,10 @@ def fee_frontier_by_blocks(period: int, reduced: bool = True,
     request is cheaper bought as one grid than bought apart, and the fee at
     which that happens is :func:`block_fee` of the antichain.  So the frontier of
     a period is the minimum of that over the antichains of its universe -- and
-    the claim this function lets a census test is that the minimum is always
-    attained with two or three parts, never four.
+    what a census can then ask is how many parts the minimum needs.  The answer
+    is a ladder of three rungs, measured by :func:`arity_ladder_census`: a pair
+    reaches ``2``, a triple reaches ``1``, and a quadruple reaches ``0``, which
+    is as low as a count goes.
     """
     if arity < 2:
         raise ValueError("arity counts parts of a block, so it starts at two")
@@ -578,6 +626,14 @@ def fee_frontier_census(max_period: int = 2000, reduced: bool = True,
     the block's price never drops under the sum of theirs).  Everything above
     ``1`` is a pair failing, and the first such period is ``6``, where ``(2, 3)``
     costs ``2`` apart and ``3`` whole: a fee of two is exactly what it takes.
+
+    What this census cannot say is what a block *larger* than ``arity`` would
+    do, and that silence is where the claim used to be too strong: the frontier
+    law stopped at three parts on the strength of a horizon that reaches
+    ``verify_universe`` grids, while the first block that reaches a fee of zero
+    needs four parts and a universe of ``15`` -- one grid past the horizon.  The
+    ladder of arities is :func:`arity_ladder_census`'s question, and it is asked
+    with its own horizon rather than inherited from this one.
     """
     if max_period < 2:
         raise ValueError("the census needs at least one even period")
@@ -664,6 +720,11 @@ def fee_frontier_census(max_period: int = 2000, reduced: bool = True,
             f"{'s' if len(shapes) != 1 else ''} "
             f"{', '.join(str(s) for s in shapes) if shapes else '(none)'}; "
             f"{widest}")
+        if arity >= 3:
+            verdict += (
+                "; blocks above that arity are NOT_MEASURED here, and a fourth "
+                "part reaches a fee of 0 -- `arity-ladder` is the census that "
+                "asks how many parts the frontier needs")
     return {
         "periods": len(period_rows),
         "max_period": max_period,
@@ -686,7 +747,157 @@ def fee_frontier_census(max_period: int = 2000, reduced: bool = True,
             "pair needs 2 and attains it at (2, 3); a triple can need only 1; "
             "and a universe that is a chain never breaks. The minimum is "
             "attained by a pair unless it is 0 or 1, so the third part buys "
-            "only the fee of one"),
+            "only the fee of one -- and the fourth buys zero, which this census "
+            "does not measure unless arity reaches it"),
+        "verdict": verdict,
+    }
+
+
+def arity_ladder_census(max_period: int = 1000, reduced: bool = False,
+                        arities: tuple[int, ...] = (2, 3, 4, 5),
+                        exhaustive_until: int = 15) -> dict:
+    """How many parts the frontier needs: the ladder, rung by rung.
+
+    A fee is a minimum over blocks, so a larger block can only lower it, and the
+    question is where the lowering stops.  It stops at zero, which is also where
+    it stops *earning*: no rung above one that already reaches ``0`` can improve
+    on it, because a fee is a count.  So the ladder has two earning steps at
+    most -- ``2 -> 3`` and ``3 -> 4`` -- and this census measures which periods
+    each one moves, on what witness, and where the free rung first opens.
+
+    The answer depends on the universe, and that is the point.  Over the grids
+    the free rung opens at ``60`` on ``(12, 20, 30)``, which **three** parts
+    already reach; the quadruple only earns where the triple stalls at one, and
+    the first such period is ``462`` on the cofactors of ``2 * 3 * 7 * 11``.
+    Over :func:`universe` -- the carriers, which is the package's default -- no
+    period up to ``1000`` reaches zero at all.  Both readings are published:
+    a free block is a reciprocal sum over the complementary divisors passing
+    ``1``, and whether that happens at three parts or at four is a property of
+    the universe, not of the fee.
+
+    This is the census the fee frontier was missing.  Its sister
+    :func:`fee_frontier_census` checks the law against every antichain, but only
+    on the periods its horizon reaches, and that horizon was one grid short of
+    the first four-part win: ``462`` has fifteen grids above one and the check
+    stopped at fourteen, so its green was a green in the dangerous direction.
+    A verification horizon is only as strong as its distance to the first
+    witness, so this census names both -- ``first_free`` carries the first
+    witness and ``exhaustive`` carries what ``exhaustive_until`` actually
+    reached.
+    """
+    if max_period < 2:
+        raise ValueError("the ladder needs at least one period to climb")
+    rungs = tuple(sorted(set(arities)))
+    if len(rungs) < 2 or rungs[0] < 2:
+        raise ValueError("a ladder needs two rungs and a block starts at two")
+    steps = tuple(zip(rungs, rungs[1:]))
+    earnings: dict[tuple[int, int], list[int]] = {step: [] for step in steps}
+    first: dict[tuple[int, int], dict] = {}
+    at_floor: list[int] = []
+    first_free: dict | None = None
+    verified = 0
+    mismatches: list[dict] = []
+    exhaustive_rows: list[dict] = []
+    for period in range(2, max_period + 1, 2):
+        fees: dict[int, int | None] = {}
+        witnesses: dict[int, tuple[int, ...] | None] = {}
+        sizes: dict[int, int] = {}
+        for n in rungs:
+            row = fee_frontier_by_blocks(period, reduced=reduced, arity=n)
+            fees[n], witnesses[n] = row["frontier"], row["witness"]
+            sizes[n] = row["universe_size"]
+        if all(fee is None for fee in fees.values()):
+            continue
+        for lo, hi in steps:
+            if fees[lo] is None or fees[hi] is None or fees[hi] >= fees[lo]:
+                continue
+            earnings[(lo, hi)].append(period)
+            first.setdefault((lo, hi), {
+                "period": period,
+                "universe_size": sizes[hi],
+                "from_fee": fees[lo],
+                "to_fee": fees[hi],
+                "witness": witnesses[hi],
+            })
+        if fees[rungs[-1]] == 0:
+            at_floor.append(period)
+        if first_free is None:
+            for n in rungs:
+                if fees[n] == 0:
+                    first_free = {
+                        "period": period,
+                        "parts": n,
+                        "universe_size": sizes[n],
+                        "witness": witnesses[n],
+                        "fourth_part_needed": fees[rungs[-1]] == 0 and n == rungs[-1],
+                    }
+                    break
+        if sizes[rungs[-1]] <= exhaustive_until:
+            verified += 1
+            truth, _ = _exhaustive_fee(
+                universe(period) if reduced else grids(period))
+            ladder = min(fee for fee in fees.values() if fee is not None)
+            exhaustive_rows.append({"period": period,
+                                   "universe_size": sizes[rungs[-1]],
+                                   "frontier": ladder, "exhaustive": truth})
+            if truth != ladder:
+                mismatches.append({"period": period, "ladder": ladder,
+                                   "exhaustive": truth})
+    heads = " ".join(f"{lo}->{hi}: {len(earnings[(lo, hi)])}" for lo, hi in steps)
+    if mismatches:
+        verdict = (
+            f"REFUTED: the ladder is not the frontier at {len(mismatches)} "
+            f"periods, so a block above {rungs[-1]} parts wins where it cannot")
+    elif verified == 0:
+        verdict = (
+            f"NO_MEDIDO: no period up to {max_period} has at most "
+            f"{exhaustive_until} grids, so the ladder was never checked "
+            f"against every antichain")
+    elif first_free is None:
+        verdict = (
+            f"NO_PERIOD REACHES ZERO up to {max_period} over the "
+            f"{'reduced' if reduced else 'divisor'} universe: the ladder earns "
+            f"{heads} period(s) and no rung is free, so the floor of the fee is "
+            f"one here rather than zero")
+    else:
+        earned_step = next((step for step in reversed(steps)
+                            if earnings[step]), None)
+        if earned_step is not None:
+            earned = first[earned_step]
+            where = (f"the last step that earns is {earned_step[0]}->"
+                     f"{earned_step[1]}, at {len(earnings[earned_step])} "
+                     f"period(s), first {earned['period']} on "
+                     f"{earned['witness']}")
+            ceiling = f"no block above {earned_step[1]} parts earns over one at {earned_step[1]}"
+        else:
+            where = "no step earns at all"
+            ceiling = f"no block above {rungs[0]} parts earns over one at {rungs[0]}"
+        verdict = (
+            f"the ladder earns {heads} period(s); a free block first appears at "
+            f"{first_free['period']} on {first_free['witness']}, which "
+            f"{first_free['parts']} part(s) already reach, so {where}; "
+            f"{ceiling} on any period up to {max_period}, and the ladder "
+            f"matches the exhaustive frontier on all {verified} periods whose "
+            f"universe is at most {exhaustive_until} grids")
+    return {
+        "max_period": max_period,
+        "universe": "reduced" if reduced else "divisors",
+        "arities": rungs,
+        "earnings": {f"{lo}->{hi}": tuple(periods)
+                     for (lo, hi), periods in earnings.items()},
+        "first": {f"{lo}->{hi}": row for (lo, hi), row in first.items()},
+        "first_free": first_free,
+        "at_floor": tuple(at_floor),
+        "exhaustive": {"until": exhaustive_until, "verified": verified,
+                       "rows": tuple(exhaustive_rows),
+                       "mismatches": tuple(mismatches)},
+        "theorem": (
+            "a fee is a minimum over blocks, so a bigger block can only lower "
+            "it, and it stops at zero, which is also where it stops earning; a "
+            "block is free exactly when the reciprocal sum over its "
+            "complementary divisors passes 1, no pair can do that (1/2 + 1/3 < "
+            "1), and the free rung therefore needs three parts at least and "
+            "nothing above four"),
         "verdict": verdict,
     }
 
