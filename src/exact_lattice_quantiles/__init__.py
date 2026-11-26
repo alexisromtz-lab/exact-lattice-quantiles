@@ -50,7 +50,8 @@ from .pricing import (PriceFormCensus, antichain_saving_ceiling,
                       block_dominance_census, block_of, block_saving,
                       band_slack, band_window, carrier_block_of,
                       carrier_block_saving, exactness_frontier,
-                      excess_parity, frontier_by_blocks, maximal_divisors,
+                      excess_parity, extremal_census, frontier_by_blocks,
+                      heaviest_antichain, maximal_divisors,
                       odd_band_census,
                       odd_members, pair_antichain_of, pair_antichain_saving,
                       price_exact, price_form_census,
@@ -63,7 +64,7 @@ from .solve import (OK, PROBES_INSUFFICIENT, UNDERCOVERED,
                     InfeasibleWithinBudget, Schedule, ladder,
                     solve_lattice_schedule)
 
-__version__ = "0.13.0"
+__version__ = "0.14.0"
 
 __all__ = [
     "Ceiling",
@@ -74,6 +75,8 @@ __all__ = [
     "reciprocal_prime_sum",
     "sign_regime",
     "sign_theorem_census",
+    "heaviest_antichain",
+    "extremal_census",
     "strong_lemma_frontier",
     "two_adic",
     "worst_antichain_weight",
