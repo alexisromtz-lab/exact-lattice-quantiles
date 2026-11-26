@@ -20,9 +20,11 @@ import json
 import unittest
 from unittest import mock
 
-from exact_lattice_quantiles import (block_advantage, block_fee,
-                                     fee_frontier_by_blocks,
-                                     fee_frontier_census)
+from itertools import combinations
+
+from exact_lattice_quantiles import (block_advantage, block_defect, block_fee,
+                                     block_fee_closed, fee_frontier_by_blocks,
+                                     fee_frontier_census, grids, universe)
 from exact_lattice_quantiles.cli import main
 
 
@@ -207,3 +209,62 @@ class TheCommandLine(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheFeeIsTheDefect(unittest.TestCase):
+    """``block_fee`` is one division on ``sum - lcm``: an identity, not a search."""
+
+    def test_both_routes_price_every_block_the_same_in_both_universes(self):
+        checked = 0
+        for period in range(2, 201, 2):
+            for U in (universe(period), grids(period)):
+                for size in range(2, min(3, len(U)) + 1):
+                    for parts in combinations(U, size):
+                        self.assertEqual(block_fee(parts),
+                                         block_fee_closed(parts), (period, parts))
+                        checked += 1
+        self.assertGreater(checked, 10_000)
+
+    def test_the_blocks_that_are_free_are_exactly_the_ones_that_save(self):
+        for period in range(2, 301, 2):
+            for parts in combinations(universe(period), 3):
+                self.assertEqual(block_fee_closed(parts) == 0,
+                                 block_advantage(parts) > 0, (period, parts))
+
+    def test_the_fee_of_one_is_a_block_one_short_of_perfect(self):
+        self.assertEqual(block_defect((6, 10, 15)), 1)
+        self.assertEqual(block_defect((6, 14, 21)), -1)
+        self.assertEqual(block_fee_closed((6, 10, 15)), 1)
+        self.assertEqual(block_fee_closed((6, 14, 21)), 1)
+
+    def test_a_block_of_one_grid_is_refused(self):
+        for route in (block_defect, block_fee_closed):
+            with self.assertRaises(ValueError):
+                route((6,))
+
+
+class TheBlockFeeCommand(unittest.TestCase):
+    def run_cli(self, *argv):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = main(list(argv))
+        return rc, out.getvalue(), err.getvalue()
+
+    def test_the_command_reads_the_fee_off_the_defect(self):
+        rc, out, _ = self.run_cli("block-fee", "6", "10", "15")
+        self.assertEqual(rc, 0)
+        self.assertIn("defect", out)
+        self.assertIn("by advantage", out)
+
+    def test_json_carries_both_routes(self):
+        rc, out, _ = self.run_cli("--json", "block-fee", "6", "21", "28")
+        self.assertEqual(rc, 0)
+        payload = json.loads(out)
+        self.assertEqual((payload["defect"], payload["fee"]), (-29, 8))
+        self.assertEqual(payload["fee_by_advantage"], payload["fee"])
+
+    def test_one_grid_is_refused_rather_than_priced_at_zero(self):
+        rc, out, err = self.run_cli("block-fee", "6")
+        self.assertEqual(rc, 3)
+        self.assertEqual(out, "")
+        self.assertIn("NO BLOCK", err)

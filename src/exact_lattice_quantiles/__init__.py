@@ -47,7 +47,8 @@ from .lattice import (TABLE_BUDGET, MaskTableTooLarge, carriers, cell_intervals,
                       seats, universe, universe_from_factorization, widths)
 from .pricing import (PriceFormCensus, antichain_saving_ceiling,
                       best_block_saving, block_advantage, block_catalogue,
-                      block_dominance_census, block_fee, block_of, block_saving,
+                      block_defect, block_dominance_census, block_fee,
+                      block_fee_closed, block_of, block_saving,
                       band_slack, band_window, carrier_block_of,
                       carrier_block_saving, exactness_frontier,
                       excess_parity, extremal_census, fee_frontier_by_blocks,
@@ -65,7 +66,7 @@ from .solve import (OK, PROBES_INSUFFICIENT, UNDERCOVERED,
                     InfeasibleWithinBudget, Schedule, ladder,
                     solve_lattice_schedule)
 
-__version__ = "0.18.0"
+__version__ = "0.19.0"
 
 __all__ = [
     "Ceiling",
@@ -80,6 +81,8 @@ __all__ = [
     "extremal_census",
     "block_advantage",
     "block_fee",
+    "block_fee_closed",
+    "block_defect",
     "setup_fee_frontier",
     "fee_frontier_by_blocks",
     "fee_frontier_census",

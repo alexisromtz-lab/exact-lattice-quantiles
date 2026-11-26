@@ -430,6 +430,58 @@ def setup_fee_frontier(period: int, reduced: bool = True,
     }
 
 
+def block_defect(parts: tuple[int, ...]) -> int:
+    """How far a block is from perfect: its sum minus its lcm.
+
+    Positive is the normal case -- the lcm of a set divides the product, so a
+    block almost always costs less than its parts and the difference is what the
+    block refunds. ``0`` is a *perfect* block (lcm equal to the sum) and negative
+    is a block whose lcm exceeds its sum, which can only happen with parts that
+    share no common multiple smaller than the product.
+    """
+    if len(parts) < 2:
+        raise ValueError("a block of one grid has no defect to measure")
+    total = 0
+    for a in parts:
+        total += a
+    return total - lcm(*parts)
+
+
+def block_fee_closed(parts: tuple[int, ...]) -> int:
+    """The fee of ``block_fee`` as one division on the defect, exactly.
+
+    ``block_advantage`` is affine in the fee with slope ``len(parts) - 1``, so
+    the least fee that makes it positive is ``floor(B / (n - 1)) + 1`` where
+    ``B = lcm // 2 - sum(p // 2)``.  ``B`` is not free: writing ``delta`` for the
+    defect and ``k`` for the number of odd parts,
+
+    - when the lcm is even, ``floor(lcm / 2) = lcm / 2`` and every odd part
+      contributes ``(p - 1) / 2``, so ``B = (k - delta) / 2``;
+    - when the lcm is odd every part is odd, so ``B = (n - 1 - delta) / 2``.
+
+    Twice ``B`` is therefore an integer, and the fee is that integer divided by
+    ``2 * (n - 1)``, plus one.  The naive version of this -- reading the fee off
+    the defect alone -- is wrong, and ``(6, 10, 15)`` is the witness: its defect
+    is one, so ``-delta / (2 * (n - 1))`` is negative and the block would look
+    free, when the least fee that breaks the formula with it is one.  The
+    correction is the odd-part count ``k``: a block of even grids gets
+    ``p // 2 = p / 2`` exactly, an odd part loses half a unit to the floor and
+    pays it back as ``k``.
+    """
+    if len(parts) < 2:
+        raise ValueError("a block of one grid saves nothing and is not a block")
+    n = len(parts)
+    lcm_all = lcm(*parts)
+    delta = block_defect(parts)
+    if lcm_all % 2 == 0:
+        twice_b = sum(1 for p in parts if p % 2) - delta
+    else:
+        twice_b = (n - 1) - delta
+    if twice_b < 0:
+        return 0
+    return twice_b // (2 * (n - 1)) + 1
+
+
 def block_fee(parts: tuple[int, ...]) -> int:
     """The least fixed cost per grid at which the block beats buying its parts.
 
