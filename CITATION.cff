@@ -9,7 +9,11 @@ abstract: >-
   constant), the cheapest design attaining a requested margin (an exact
   hypergraph coverage problem), and the fewest shared sections that hold that
   margin. Margins above the instance ceiling are reported as infeasible at any
-  cost, by duality rather than by search failure.
+  cost, by duality rather than by search failure. A margin kept under a common
+  drift is priced in the same currency -- keeping v under a drift of d costs
+  exactly what keeping v + d costs with none -- and the reach a design has above
+  its witness margin is proved unspendable, so a service level is one purchase
+  and the drift is paid out of the instance ceiling.
 authors:
   - family-names: "Roman"
     given-names: "Alexis"
@@ -24,5 +28,5 @@ keywords:
   - multi-rate scheduling
   - phase margin
   - rational arithmetic
-version: 0.15.0
+version: 0.16.0
 date-released: "2026-11-26"

@@ -97,13 +97,20 @@ def _print_ceiling(period: int, as_json: bool) -> int:
     return RC_OK
 
 
-def _print_solve(args: argparse.Namespace) -> int:
+def _schedule_or_rc(period: int, max_cost: int, probes: int,
+                    required: Fraction, as_json: bool
+                    ) -> tuple[object, int | None]:
+    """The schedule for a margin requirement, or the exit code of no schedule.
+
+    Three named impossibilities -- above the instance ceiling, over the budget,
+    above the table budget -- are reported here once instead of in every
+    command that starts from a requirement, so a new command inherits the
+    codes instead of re-deriving them.
+    """
     try:
-        schedule = solve_lattice_schedule(
-            args.period, args.max_cost, args.probes,
-            Fraction(0) if args.min_margin is None else args.min_margin)
+        return solve_lattice_schedule(period, max_cost, probes, required), None
     except InfeasibleAboveInstanceCeiling as exc:
-        if args.json:
+        if as_json:
             print(json.dumps({
                 "verdict": "INFEASIBLE_ABOVE_INSTANCE_CEILING",
                 "period": exc.period,
@@ -112,9 +119,9 @@ def _print_solve(args: argparse.Namespace) -> int:
             }, indent=2, sort_keys=True))
         else:
             print(f"INFEASIBLE_ABOVE_INSTANCE_CEILING: {exc}")
-        return RC_ABOVE_CEILING
+        return None, RC_ABOVE_CEILING
     except InfeasibleWithinBudget as exc:
-        if args.json:
+        if as_json:
             print(json.dumps({
                 "verdict": "OVER_BUDGET",
                 "period": exc.period,
@@ -124,9 +131,9 @@ def _print_solve(args: argparse.Namespace) -> int:
             }, indent=2, sort_keys=True))
         else:
             print(f"OVER_BUDGET: {exc}")
-        return RC_OVER_BUDGET
+        return None, RC_OVER_BUDGET
     except MaskTableTooLarge as exc:
-        if args.json:
+        if as_json:
             print(json.dumps({
                 "verdict": "BEYOND_TABLE_BUDGET",
                 "period": exc.period,
@@ -139,7 +146,15 @@ def _print_solve(args: argparse.Namespace) -> int:
             }, indent=2, sort_keys=True))
         else:
             print(f"BEYOND_TABLE_BUDGET: {exc}")
-        return RC_BEYOND_TABLE_BUDGET
+        return None, RC_BEYOND_TABLE_BUDGET
+
+
+def _print_solve(args: argparse.Namespace) -> int:
+    schedule, rc = _schedule_or_rc(
+        args.period, args.max_cost, args.probes,
+        Fraction(0) if args.min_margin is None else args.min_margin, args.json)
+    if rc is not None:
+        return rc
     if args.json:
         print(json.dumps(schedule.as_dict(), indent=2, sort_keys=True))
         return RC_OK if schedule.verdict == OK else RC_NO_MEDIDO
@@ -160,6 +175,69 @@ def _print_solve(args: argparse.Namespace) -> int:
     # A verdict that is not OK is a schedule not delivered: exiting 0 there
     # would let a shell caller read "we have a schedule" from a failed one.
     return RC_OK if schedule.verdict == OK else RC_NO_MEDIDO
+
+
+def _print_plan(args: argparse.Namespace) -> int:
+    """The purchase a service level is: keep a margin *under* a common drift.
+
+    ``solve`` takes a margin and reports what the sections hold with no drift.
+    A service level is the other shape -- a margin that has to survive a drift
+    -- and its price is the price of ``keep + delta``: the drift is spent out
+    of the witness margin, so it is one purchase and not two searches.  The
+    answer is checked against :func:`guaranteed_margin` before it is printed;
+    if the two ever disagree the command reports ``NO_MEDIDO`` instead of a
+    number, because a service level read from a stale law is not a reading.
+    """
+    delta = Fraction(0) if args.delta is None else Fraction(args.delta)
+    keep = Fraction(args.keep)
+    if keep < 0:
+        raise ValueError(f"a margin to keep cannot be negative, got {keep}")
+    if delta < 0:
+        raise ValueError(f"a drift cannot be negative, got {delta}")
+    required = keep + delta
+    schedule, rc = _schedule_or_rc(args.period, args.max_cost, args.probes,
+                                   required, args.json)
+    if rc is not None:
+        return rc
+    U = universe(schedule.period)
+    kept = None
+    if schedule.probes and schedule.witness_margin is not None:
+        kept = guaranteed_margin(schedule.design, schedule.probes, U, delta)
+    short = schedule.verdict != OK or kept is None or kept < keep
+    if args.json:
+        print(json.dumps({
+            "verdict": schedule.verdict,
+            "period": schedule.period,
+            "keep": str(keep),
+            "delta": str(delta),
+            "required": str(required),
+            "design": list(schedule.design),
+            "cost": schedule.cost,
+            "max_cost": schedule.max_cost,
+            "probes": [str(q) for q in schedule.probes],
+            "probes_needed": schedule.probes_needed,
+            "witness_margin": None if schedule.witness_margin is None
+            else str(schedule.witness_margin),
+            "kept_margin": None if kept is None else str(kept),
+            "meets_service_level": not short,
+            "ceiling": str(schedule.ceiling.margin),
+        }, indent=2, sort_keys=True))
+        return RC_NO_MEDIDO if short else RC_OK
+    print(f"period           {schedule.period}")
+    print(f"service level    keep {keep} under a drift of {delta}"
+          f"  ->  buy margin {required}")
+    print(f"design           {list(schedule.design)}")
+    print(f"cost             {schedule.cost} points (budget {schedule.max_cost})")
+    print(f"sections ({len(schedule.probes)})  {[str(q) for q in schedule.probes]}")
+    print(f"witness margin   {schedule.witness_margin}")
+    if kept is not None:
+        print(f"under drift      {delta}  ->  keeps margin {kept}")
+    print(f"verdict          {schedule.verdict}")
+    if short:
+        held = "no sections realise it" if kept is None else f"holds {kept}"
+        print(f"shortfall        {held} against a service level of {keep}"
+              f"  (ceiling {schedule.ceiling.margin})")
+    return RC_NO_MEDIDO if short else RC_OK
 
 
 def _print_drift(args: argparse.Namespace) -> int:
@@ -764,6 +842,22 @@ def _self_test() -> int:
           guaranteed_margin(G, Q, U), s.witness_margin)
     check("drift wider than the margin keeps none",
           guaranteed_margin(G, Q, U, s.witness_margin * 2), Fraction(0))
+    service, drift = Fraction(1, 30), Fraction(1, 60)
+    plan = solve_lattice_schedule(180, max_cost=64, k_probes=5,
+                                  min_margin=service + drift)
+    check("a service level is bought as the margin plus the drift",
+          plan.design, (12, 18, 20, 45))
+    check("and under that drift it still keeps the service level",
+          guaranteed_margin(plan.design, plan.probes, U, drift) >= service, True)
+    try:
+        solve_lattice_schedule(180, max_cost=10**6, k_probes=8,
+                               min_margin=instance_ceiling(180).margin + drift)
+    except InfeasibleAboveInstanceCeiling as exc:
+        check("a service level above the ceiling minus the drift is refused",
+              exc.ceiling, Fraction(1, 3))
+    else:
+        check("a service level above the ceiling minus the drift is refused",
+              "no exception", "exception")
     check("block of 270 is {54, 90, 135}", block_of(270)[0], (54, 90, 135))
     check("block of 270 saves 4", block_saving(270), 4)
     check("block of 30 saves nothing", block_saving(30), 0)
@@ -1005,6 +1099,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--delta", type=_fraction, default=None,
         help="common drift to absorb; prints the margin the schedule still keeps")
 
+    p_plan = sub.add_parser(
+        "plan", help="cheapest design that keeps a margin under a common drift")
+    p_plan.add_argument("period", type=int)
+    p_plan.add_argument("--max-cost", type=int, required=True)
+    p_plan.add_argument("--probes", type=int, required=True)
+    p_plan.add_argument("--keep", type=_fraction, required=True,
+                        help="margin the sections must still hold under the drift")
+    p_plan.add_argument("--delta", type=_fraction, default=None,
+                        help="common drift the schedule has to absorb")
+
     p_ladder = sub.add_parser("ladder", help="cost -> best margin for one period")
     p_ladder.add_argument("period", type=int)
 
@@ -1117,6 +1221,8 @@ def main(argv: list[str] | None = None) -> int:
             return _print_ceiling(args.period, args.json)
         if args.command == "solve":
             return _print_solve(args)
+        if args.command == "plan":
+            return _print_plan(args)
         if args.command == "drift":
             return _print_drift(args)
         if args.command == "ladder":

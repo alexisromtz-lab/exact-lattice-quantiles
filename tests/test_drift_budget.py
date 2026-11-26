@@ -14,11 +14,12 @@ strictly below the answer tolerates the drift, the answer itself may not.
 import unittest
 from fractions import Fraction as Fraction
 
-from exact_lattice_quantiles import (cell_widths, design_law, drift_radius,
-                                     drift_tolerance, grids, guaranteed_margin,
-                                     margin_under_drift, minimum_cost_design,
-                                     solve_lattice_schedule, universe,
-                                     witness_margin)
+from exact_lattice_quantiles import (cell_widths, cover_masks, design_law,
+                                     drift_radius, drift_tolerance, grids,
+                                     guaranteed_margin, margin_under_drift,
+                                     minimum_cost_design, solve_lattice_schedule,
+                                     universe, witness_margin)
+from exact_lattice_quantiles.coverage import all_designs
 
 
 def design_tolerance(G, Q, U, margin):
@@ -131,6 +132,71 @@ class ReachIsNotSpendableTest(unittest.TestCase):
         for delta in (Fraction(1, 100), Fraction(1, 12), Fraction(1, 8)):
             self.assertEqual(guaranteed_margin(self.G, self.Q, self.U, delta),
                              Fraction(1, 6), f"delta={delta}")
+
+
+class TheRadiusNeverFallsBelowTheMarginTest(unittest.TestCase):
+    """``radius >= witness_margin`` for every design, and the gap is inert.
+
+    Not a census but a theorem: ``drift_radius`` is the largest margin whose
+    tolerance is still non-negative, so it cannot sit below the margin the
+    design already holds.  Swept rather than argued as well, because a design
+    sweep is what caught the pieces this law is assembled from.
+
+    The sweep also shows the gap is not rare -- 49 of its 186 designs reach
+    further than they hold -- and that none of that reach buys drift: past the
+    witness margin every one of them has tolerance zero.
+    """
+
+    DELTAS = (Fraction(1, 100), Fraction(1, 12), Fraction(1, 3))
+
+    def designs(self):
+        for period in (12, 18, 20):
+            U = universe(period)
+            gr = grids(period)
+            masks = cover_masks(gr, U, cell_widths(gr, U), Fraction(0))
+            full = (1 << len(U)) - 1
+            for G in all_designs(gr):
+                reached = 0
+                for M in G:
+                    reached |= masks[M]
+                if reached != full:
+                    continue
+                for k in (2, 3, 5):
+                    Q = tuple(sorted({Fraction((j * 7 + 3) % period, period)
+                                      for j in range(k)}))
+                    if Q:
+                        yield period, U, G, Q
+
+    def test_the_radius_is_never_below_the_witness_margin(self):
+        readings = 0
+        for period, U, G, Q in self.designs():
+            w = min(witness_margin(G, Q, U).values())
+            r = min(drift_radius(G, Q, U).values())
+            self.assertGreaterEqual(r, w, f"T={period} G={G} Q={Q}")
+            readings += 1
+        self.assertGreater(readings, 150)
+
+    def test_the_tolerance_dies_at_the_witness_margin(self):
+        for period, U, G, Q in self.designs():
+            w = min(witness_margin(G, Q, U).values())
+            self.assertEqual(min(drift_tolerance(G, Q, U, w).values()),
+                             Fraction(0), f"T={period} G={G} Q={Q}")
+
+    def test_so_no_drift_keeps_more_than_the_witness_margin(self):
+        for period, U, G, Q in self.designs():
+            w = min(witness_margin(G, Q, U).values())
+            for delta in self.DELTAS:
+                self.assertLessEqual(guaranteed_margin(G, Q, U, delta), w,
+                                     f"T={period} G={G} Q={Q} delta={delta}")
+
+    def test_the_gap_is_real_and_unspendable(self):
+        """A design that reaches further than it holds, measured once."""
+        gap = 0
+        for period, U, G, Q in self.designs():
+            w = min(witness_margin(G, Q, U).values())
+            if min(drift_radius(G, Q, U).values()) > w:
+                gap += 1
+        self.assertGreater(gap, 0, "the sweep stopped exercising the gap")
 
 
 if __name__ == "__main__":

@@ -347,6 +347,18 @@ def drift_tolerance(G: tuple[int, ...], Q: tuple[Fraction, ...],
     :func:`drift_radius`.  ``doubled=False`` halves *both*, so the identity
     ``tolerance(v) = radius - v`` reads the same in either view -- a view is a
     change of units, never a change of measurement.
+
+    One consequence of that is a proof and not a measurement, and it is why the
+    reach above the witness slack is not a second budget.  A shrunk span holds
+    a **strict** seed at zero only when its pair's slack exceeds ``v``, so a
+    positive reach at ``v`` needs some pair to hold more than ``v``.  At
+    ``v = w`` the divisor that attains ``w`` has every pair at ``w`` or below,
+    so its reach is exactly zero and ``tolerance(v) == 0`` for every
+    ``v >= w``.  Hence ``guaranteed_margin(delta) <= witness_margin`` for every
+    ``delta > 0``: a design cannot keep more under a drift than it keeps
+    without one, and a service level ``keep`` survives a drift ``delta`` only
+    while ``keep + delta`` is inside the instance ceiling.  ``plan`` in the CLI
+    is that sentence as a command.
     """
     scale = 2 if doubled else 1
     half = Fraction(margin) / scale

@@ -27,6 +27,7 @@ returns it as a `fractions.Fraction`:
 | Is the margin I asked for even possible? | a certificate, not an error message | `InfeasibleAboveInstanceCeiling` |
 | How much common drift does the margin survive? | a curve, not a constant | `drift_tolerance` |
 | How much common drift still covers every divisor? | the exact coverage radius | `drift_radius` |
+| What does keeping margin `v` under drift `delta` cost? | one purchase, `v + delta` | `guaranteed_margin` |
 
 ## Install
 
@@ -975,7 +976,7 @@ pins the design half.
 ## Drift is not a second budget
 
 The price above is paid in one currency. A design that holds a margin `v` under
-a common drift `delta` is quoted as one number, `v + delta`, and 0.13.0 reads
+a common drift `delta` is quoted as one number, `v + delta`, and 0.16.0 reads
 the exchange in both directions:
 
 ```python
@@ -1040,6 +1041,44 @@ The sixth above `1/6` is reach the sections have and margin they never held. So
 `drift_radius` is what the sections **cover**, never what they **keep**, and a
 caller who quotes it as a guarantee quotes a number the schedule cannot hold.
 
+That the radius never falls below the witness margin is a theorem, not a
+census. `drift_radius` is the largest margin whose tolerance is still
+non-negative, so it cannot sit below the margin the design already holds: a
+shrunk span holds a *strict* seed at zero only when its pair's slack exceeds
+`v`, and at `v == w` the divisor that attains `w` has no pair above it, so
+`tolerance(w) == 0` and stays `0` for every larger `v`. Two consequences, and
+the sweep in [tests/test_drift_budget.py](tests/test_drift_budget.py) checks
+both over **186 designs** of `T` in `{12, 18, 20}` — of which **49** do carry a
+radius above their witness margin:
+
+- `radius >= witness_margin` in **186 of 186**. An exhaustive census says the
+  same over every design with up to 3 sections of `T` in `{12, 18, 20, 24, 30}`:
+  **0 of 951508** below, **58712** above — the gap is the common case, not an
+  accident of one period;
+- `guaranteed_margin(delta) <= witness_margin` for every `delta > 0`, so a
+  service level `keep` survives a drift `delta` only while `keep + delta` is
+  inside the instance ceiling. The drift is paid out of the ceiling.
+
+Which makes a service level one command and not two budgets:
+
+```
+$ exact-lattice-quantiles plan 180 --max-cost 64 --probes 5 --keep 1/30 --delta 1/60
+period           180
+service level    keep 1/30 under a drift of 1/60  ->  buy margin 1/20
+design           [12, 18, 20, 45]
+cost             47 points (budget 64)
+sections (5)  ['1/18', '1/2', '53/90', '13/18', '8/9']
+witness margin   1/9
+under drift      1/60  ->  keeps margin 17/180
+verdict          OK
+```
+
+`plan` is the plain solve at `keep + delta` and then re-reads its own answer
+with `guaranteed_margin` before printing: `0` the level is met, `1` the level
+plus the drift is above the instance ceiling (no schedule at any cost), `2` the
+budget is short, `4` `NO_MEDIDO` — the sections do not realise the level asked
+for, and a shortfall is reported instead of a number.
+
 One reading rule, because it changes the answer: the value returned is a
 **supremum**. Where a divisor breaks, the margin it names is approached, not
 attained — `drift_tolerance` at that value is `0`. The guarantee is therefore
@@ -1048,8 +1087,8 @@ attained value instead would understate the answer by an arbitrary amount; on
 the design above at `delta = 1/6` it reports `1/12` where the sections keep
 `1/6`.
 
-[tests/test_drift_budget.py](tests/test_drift_budget.py) pins the law, the
-round-trip, and the gap.
+[tests/test_drift_budget.py](tests/test_drift_budget.py) pins the law, the round-trip,
+the gap, and the theorem that closes it.
 
 ## Exactness
 
@@ -1065,8 +1104,8 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 349 tests
-exact-lattice-quantiles --self-test           # 92 checks, RC 0
+python -m unittest discover -s tests -t .     # 359 tests
+exact-lattice-quantiles --self-test           # 95 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,

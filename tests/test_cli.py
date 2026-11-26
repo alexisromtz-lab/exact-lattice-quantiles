@@ -6,6 +6,7 @@ import contextlib
 import io
 import json
 import unittest
+from fractions import Fraction
 
 from exact_lattice_quantiles import TABLE_BUDGET
 from exact_lattice_quantiles.cli import main
@@ -165,6 +166,60 @@ class TestBeyondTableBudget(unittest.TestCase):
         self.assertEqual(payload["budget"], TABLE_BUDGET)
         self.assertEqual(payload["cells"], 2 << 33)
         self.assertEqual(payload["site"], "the set-cover DP")
+
+
+class TestPlan(unittest.TestCase):
+    """A service level is a margin to keep *under* a drift: one purchase."""
+
+    def test_a_reachable_service_level_exits_zero(self):
+        rc, out = run("--json", "plan", "180", "--max-cost", "64",
+                      "--probes", "5", "--keep", "1/30", "--delta", "1/60")
+        self.assertEqual(rc, 0, out)
+        payload = json.loads(out)
+        self.assertEqual(payload["required"], "1/20")
+        self.assertTrue(payload["meets_service_level"])
+        self.assertGreaterEqual(Fraction(payload["kept_margin"]), Fraction(1, 30))
+        self.assertEqual(payload["design"], [12, 18, 20, 45])
+
+    def test_the_plan_is_the_solve_of_margin_plus_drift(self):
+        """The price of a service level is not a second search."""
+        _, planned = run("--json", "plan", "180", "--max-cost", "64",
+                         "--probes", "5", "--keep", "1/30", "--delta", "1/60")
+        _, solved = run("--json", "solve", "180", "--max-cost", "64",
+                        "--probes", "5", "--min-margin", "1/20")
+        self.assertEqual(json.loads(planned)["cost"], json.loads(solved)["cost"])
+        self.assertEqual(json.loads(planned)["probes"], json.loads(solved)["probes"])
+        self.assertEqual(json.loads(planned)["witness_margin"],
+                         json.loads(solved)["witness_margin"])
+
+    def test_a_service_level_above_the_ceiling_minus_the_drift_exits_one(self):
+        rc, out = run("--json", "plan", "180", "--max-cost", "1000",
+                      "--probes", "8", "--keep", "1/3", "--delta", "1/60")
+        self.assertEqual(rc, 1, out)
+        self.assertEqual(json.loads(out)["verdict"],
+                         "INFEASIBLE_ABOVE_INSTANCE_CEILING")
+
+    def test_a_cheap_budget_is_over_budget_not_a_shortfall(self):
+        rc, out = run("--json", "plan", "180", "--max-cost", "40",
+                      "--probes", "8", "--keep", "1/30", "--delta", "1/60")
+        self.assertEqual(rc, 2, out)
+        self.assertEqual(json.loads(out)["verdict"], "OVER_BUDGET")
+
+    def test_sections_too_few_is_no_medido_not_a_number(self):
+        rc, out = run("--json", "plan", "180", "--max-cost", "64",
+                      "--probes", "2", "--keep", "1/30", "--delta", "1/60")
+        self.assertEqual(rc, 4, out)
+        payload = json.loads(out)
+        self.assertFalse(payload["meets_service_level"])
+        self.assertIsNone(payload["kept_margin"])
+
+    def test_no_drift_is_the_plain_solve(self):
+        _, planned = run("--json", "plan", "180", "--max-cost", "64",
+                         "--probes", "5", "--keep", "1/12")
+        _, solved = run("--json", "solve", "180", "--max-cost", "64",
+                        "--probes", "5", "--min-margin", "1/12")
+        self.assertEqual(json.loads(planned)["kept_margin"],
+                         json.loads(solved)["witness_margin"])
 
 
 class TestSelfTest(unittest.TestCase):
