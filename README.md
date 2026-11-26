@@ -1297,7 +1297,7 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 397 tests
+python -m unittest discover -s tests -t .     # 398 tests
 exact-lattice-quantiles --self-test           # 102 checks, RC 0
 ```
 
