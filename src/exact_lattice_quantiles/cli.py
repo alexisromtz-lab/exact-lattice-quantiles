@@ -43,7 +43,9 @@ from .pricing import (antichain_saving_ceiling, arity_ladder_census, band_slack,
                       block_advantage, block_defect, block_dominance_census,
                       block_fee, block_fee_closed, block_free,
                       block_of, block_saving,
-                      carrier_block_of, carrier_block_saving, cofactor_block,
+                      carrier_block_of, carrier_block_saving,
+                      carrier_image, carrier_law_census, cofactor_block,
+                      crossing_scalars,
                       free_margin, free_margin_census, free_margin_cross,
                       excess_parity, exactness_frontier, extremal_census,
                       fee_frontier_by_blocks, fee_frontier_census,
@@ -53,6 +55,7 @@ from .pricing import (antichain_saving_ceiling, arity_ladder_census, band_slack,
                       pair_antichain_saving, price_exact,
                       price_form_census, price_form_sweep, prime_excess,
                       reciprocal_filter_census, reciprocal_prime_sum,
+                      scaling_census,
                       setup_fee_frontier, sign_regime, sign_theorem_census,
                       strong_lemma_frontier, worst_antichain_weight)
 from .solve import OK, InfeasibleWithinBudget, ladder, solve_lattice_schedule
@@ -1412,6 +1415,19 @@ def _self_test() -> int:
           (fee_frontier_by_blocks(4)["chain"],
            fee_frontier_by_blocks(6)["frontier"],
            fee_frontier_by_blocks(180)["frontier"]), (True, 2, 1))
+    check("the universe read by the divisor is the universe the grids name",
+          carrier_law_census(1200)["splits"], ())
+    check("the crossing scales are forecast, not swept",
+          [(row["k"], row["period"], row["margin"])
+           for row in crossing_scalars(4001) if row["margin"] > 0],
+          [(9, 1080, 8), (14, 2520, 14), (18, 2160, 18), (22, 3960, 22),
+           (27, 3240, 26)])
+    check("and the census of the universe finds no sixth",
+          [row["period"] for row in scaling_census(1200)["measured"]],
+          [1080])
+    check("the periods where the divisor universe touches the line are "
+          "carried by no grid",
+          {30, 858} <= set(carrier_image(900)["absent"]), True)
     universes = reciprocal_filter_census(400)
     check("every period below one is clean in both universes, not just one",
           (universes["proved"], universes["proved_without_break"]),
@@ -1656,6 +1672,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--universe", choices=("reduced", "divisors"), default="reduced",
         help="the carriers U(T) or every divisor D(T), as in free-margin")
 
+    p_carrier = sub.add_parser(
+        "carrier-law",
+        help="U(T) read by the divisor instead of by the grids, plus the "
+             "divisors that no even grid carries and so no period holds")
+    p_carrier.add_argument("--max-period", type=int, default=1200)
+    p_carrier.add_argument("--max-divisor", type=int, default=1000)
+    p_carrier.add_argument("--json", action="store_true")
+
+    p_scalar = sub.add_parser(
+        "scalar-law",
+        help="every scale of the Giuga triple that clears the free line, "
+             "forecast from the carrier grids and censused period by period")
+    p_scalar.add_argument("--max-period", type=int, default=1200)
+    p_scalar.add_argument("--json", action="store_true")
+
     p_univ = sub.add_parser(
         "universes",
         help="census the reciprocal sum against both universes, period by "
@@ -1671,6 +1702,87 @@ def build_parser() -> argparse.ArgumentParser:
                           help="the live acta: measure its blob, its lines and the"
                                " tables the manifest cites (read by AST, never imported)")
     return parser
+
+
+def _print_carrier_law(max_period: int, max_divisor: int, as_json: bool) -> int:
+    """The universe read by the divisor instead of by the grids, both censused.
+
+    Two claims and two measurements: ``U(T)`` is the set of divisors that some
+    even grid of the period carries (the grids route and the divisor route must
+    name the same set), and a divisor that no even grid carries is in no
+    universe at all.  ``RC_ABOVE_CEILING`` the moment a period splits -- the
+    law is only worth having if it is the same set.
+    """
+    law = carrier_law_census(max_period)
+    image = carrier_image(max_divisor)
+    if as_json:
+        print(json.dumps({"universe_law": law, "carrier_image": image},
+                         indent=2, sort_keys=True))
+    else:
+        def line(label: str, value: str, note: str = "") -> str:
+            return f"  {label:<24}{value:<16}{note}"
+
+        print("carrier-law: U(T) read by the divisor, and the divisors no "
+              "grid carries")
+        print(line("periods read twice", str(law["periods_measured"]),
+                   f"every even period to {law['max_period']}"))
+        print(line("splits", str(len(law["splits"])),
+                   "first: " + str(law["splits"][0]["period"])
+                   if law["splits"] else "none, the two routes agree"))
+        print(line("carriers measured", str(image["carriers_measured"]),
+                   f"divisors to {image['max_divisor']} that some even grid "
+                   f"to {image['grid_limit']} carries"))
+        print(line("no grid carries", str(len(image["absent"])),
+                   ", ".join(str(a) for a in image["absent"][:8]) or "none"))
+        print(f"  verdict  {law['verdict']}")
+        print(f"  verdict  {image['verdict']}")
+    for split in law["splits"]:
+        print(f"SPLIT: period {split['period']} only by the grids "
+              f"{split['only_by_grids']}, only by the law "
+              f"{split['only_by_law']}", file=sys.stderr)
+    if law["splits"]:
+        return RC_ABOVE_CEILING
+    if law["periods_measured"] == 0:
+        print(f"NO_MEDIDO: no even period up to {max_period}", file=sys.stderr)
+        return RC_NO_MEDIDO
+    return RC_OK
+
+
+def _print_scalar_law(max_period: int, as_json: bool) -> int:
+    """Which scales of the Giuga triple cross the free line, and when.
+
+    The crossing periods are forecast from the grids that carry the scaled
+    parts, then measured by reading every period of the universe twice.  A
+    period the law misses is not a rounding error: it is the law being wrong
+    about what a block is, so it exits ``RC_ABOVE_CEILING``.
+    """
+    census = scaling_census(max_period)
+    if as_json:
+        print(json.dumps(census, indent=2, sort_keys=True))
+    else:
+        def line(label: str, value: str, note: str = "") -> str:
+            return f"  {label:<24}{value:<16}{note}"
+
+        print("scalar-law: every scale of (6, 10, 15) that clears the free line")
+        print(line("horizon", str(census["max_period"]),
+                   f"{census['periods_measured']} even periods read twice"))
+        print(line("crossing periods", str(len(census["forecast"])),
+                   ", ".join(f"{r['period']} (k={r['k']}, margin "
+                             f"{r['margin']})" for r in census["forecast"])
+                   or "none"))
+        print(line("reader splits", str(len(census["reader_splits"])),
+                   "search and lcm disagree" if census["reader_splits"]
+                   else "none, both readers agree"))
+        for row in census["measured"]:
+            print(line(f"  measured {row['period']}", str(row["margin"]),
+                       str(row["block"])))
+        print(f"  verdict  {census['verdict']}")
+    if census["reader_splits"] or census["verdict"].startswith("the law misses"):
+        return RC_ABOVE_CEILING
+    if census["periods_measured"] == 0:
+        print(f"NO_MEDIDO: no even period up to {max_period}", file=sys.stderr)
+        return RC_NO_MEDIDO
+    return RC_OK
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1744,6 +1856,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "cross-read":
             return _print_cross_read(args.max_period,
                                      args.universe == "reduced", args.json)
+        if args.command == "carrier-law":
+            return _print_carrier_law(args.max_period, args.max_divisor,
+                                      args.json)
+        if args.command == "scalar-law":
+            return _print_scalar_law(args.max_period, args.json)
         if args.command == "universes":
             return _print_universes(args.max_period, args.json)
     except MaskTableTooLarge as exc:

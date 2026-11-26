@@ -1097,6 +1097,72 @@ its own margin, `RC 1` when they split or a witness contradicts itself -- the
 horizon then is the period, not the census -- and `RC 4` when no period had two
 incomparable grids to read at all.
 
+#### The universe is a filter over divisors, and the scales are a law
+
+`universe(T)` builds every even grid of the period and unions their medians: a
+*forwards* definition, and forwards the answer costs `T / 2` seats per grid. The
+same set can be read *backwards*, and backwards it is a property of the divisor
+alone -- `a` is in `U(T)` exactly when some even grid `q * a` dividing `T`
+carries `a`. That is one filter over the divisors of `T`, no grid built, and
+`carrier-law` reads both ways and compares, period by period:
+
+```
+$ exact-lattice-quantiles carrier-law
+carrier-law: U(T) read by the divisor, and the divisors no grid carries
+  periods read twice      600             every even period to 1200
+  splits                  0               none, the two routes agree
+  carriers measured       922             divisors to 1000 that some even grid to 20000 carries
+  no grid carries         77              30, 42, 60, 66, 78, 102, 114, 120
+  verdict  the divisors and the grids name the same universe on all 600 even periods to 1200
+  verdict  77 of the 999 divisors to 1000 are no even grid's median below 20000, so no period carries them
+```
+
+Two facts, and the second one is the useful one. The routes agree on all **2000**
+even periods to `4000`, so the law is the same set and costs `tau(T / a)` mass
+reads per divisor instead of `T / 2` seats per grid. And a divisor that is no
+even grid's median is in **no** universe at all, for any period: up to `1000`
+there are `77` such divisors, and every one of them is even. The three periods
+where the *divisor* universe touches the free line -- `30`, `858`, `1722` -- are
+all in that list, as is `60`, where the carrier universe touches. The line is
+where a divisor is not carried.
+
+That is what turns the scales of the Giuga triple from a sweep into a law. The
+margin is not the question, because it is closed: `margin(kA) = k - [k odd]`,
+positive for every `k >= 2`. What decides a crossing is whether the three scaled
+parts can land in the same `U(T)` -- a membership question, answered by the
+carrier grids of `6k`, `10k` and `15k` and one lcm, with no period swept:
+
+```
+$ exact-lattice-quantiles scalar-law --max-period 4001
+scalar-law: every scale of (6, 10, 15) that clears the free line
+  horizon                 4001            2000 even periods read twice
+  crossing periods        5               1080 (k=9, margin 8), 2160 (k=18, margin 18), 2520 (k=14, margin 14), 3240 (k=27, margin 26), 3960 (k=22, margin 22)
+  reader splits           0               none, both readers agree
+    measured 1080         8               (54, 90, 135)
+    measured 2160         18              (108, 180, 270)
+    measured 2520         14              (84, 140, 210)
+    measured 3240         26              (162, 270, 405)
+    measured 3960         22              (132, 220, 330)
+  verdict  the law and the census name the same 5 crossing periods to 4001, out of 2000 even periods read twice
+```
+
+`3240` is the row that matters. Every census published before v0.23.0 stopped at
+`3000` and so saw three crossings; the law reads `k = 27` off the grids of
+`162`, `270` and `405` and names a period thirty past that horizon -- and the
+universe of `3240` then confirms it with both readers, at margin `26`. A law
+that only reproduced the rows already measured would be a summary; one that
+names a row no sweep had reached is a forecast. `scalar-law` exits `RC 1` the
+moment the two readers split or the census finds a crossing the law did not
+name, so a sixth scaled crossing cannot arrive quietly.
+
+The other direction is measured too, past the horizon the two readers were built
+for: `cross-read --universe divisors --max-period 10000` reads **4987** periods
+twice in three minutes fifty and finds `0` disagreements, the line touched only
+at `30`, `858` and `1722`, and `418` crossed periods with `60` at margin `2` on
+`(12, 20, 30)` as the first. The fourth Giuga number is `66198`, so nothing new
+was owed on the line -- what was owed was the certificate, and it is now a
+transcript instead of a bound.
+
 #### The fee of a block is not a search: it is half its defect
 
 `block_advantage` is affine in the fee with slope `n - 1`, so inverting it is one
@@ -1620,8 +1686,8 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 435 tests
-exact-lattice-quantiles --self-test           # 118 checks, RC 0
+python -m unittest discover -s tests -t .     # 447 tests
+exact-lattice-quantiles --self-test           # 121 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,
