@@ -22,6 +22,8 @@ import argparse
 import json
 import sys
 from fractions import Fraction
+from itertools import chain, combinations
+from math import lcm
 
 from .ceiling import (InfeasibleAboveInstanceCeiling, ceiling_by_product,
                       ceiling_by_scan, ceiling_census, instance_ceiling)
@@ -37,7 +39,8 @@ from .lattice import (TABLE_BUDGET, MaskTableTooLarge, cell_widths,
                       grids, mask_table, period_of, universe)
 from .pricing import (antichain_saving_ceiling, band_slack, band_window,
                       block_catalogue,
-                      block_advantage, block_dominance_census, block_fee,
+                      block_advantage, block_defect, block_dominance_census,
+                      block_fee, block_fee_closed,
                       block_of, block_saving,
                       carrier_block_of, carrier_block_saving, excess_parity,
                       exactness_frontier, extremal_census,
@@ -659,6 +662,51 @@ def _print_setup_fee(period: int, reduced: bool, max_setup: int,
     return RC_OK
 
 
+def _print_block_fee(parts: tuple[int, ...], as_json: bool) -> int:
+    """The fee of one block, read off its defect instead of searched for.
+
+    ``RC_BAD_REQUEST`` when the argument is not a block at all: one grid has no
+    defect and no fee, and answering ``0`` would read as "free".
+    """
+    if len(parts) < 2:
+        print("NO BLOCK: a block needs at least two grids; one grid is never "
+              "cheaper than itself", file=sys.stderr)
+        return RC_BAD_REQUEST
+    lcm_all = lcm(*parts)
+    defect = block_defect(parts)
+    odd_parts = sum(1 for p in parts if p % 2)
+    twice_b = odd_parts - defect if lcm_all % 2 == 0 else len(parts) - 1 - defect
+    fee = block_fee_closed(parts)
+    if as_json:
+        print(json.dumps({"parts": list(parts), "lcm": lcm_all,
+                          "sum": sum(parts), "defect": defect,
+                          "odd_parts": odd_parts, "twice_b": twice_b,
+                          "fee": fee, "fee_by_advantage": block_fee(parts)},
+                         indent=2, sort_keys=True))
+    else:
+        def line(label: str, value: str, note: str = "") -> str:
+            return f"  {label:<24}{value:<16}{note}"
+
+        print(f"block fee: {tuple(parts)}")
+        print(line("lcm", str(lcm_all), "one grid covering every part"))
+        print(line("sum", str(sum(parts)), "one grid per part"))
+        print(line("defect", str(defect), "sum - lcm: zero is a perfect block"))
+        print(line("odd parts", str(odd_parts),
+                   "k - defect, the lcm is even" if lcm_all % 2 == 0 else
+                   f"{len(parts)} - 1 - defect, the lcm is odd"))
+        print(line("twice B", str(twice_b),
+                   "twice the advantage at a zero fee"))
+        print(line("fee", str(fee),
+                   f"floor(twice B / {2 * (len(parts) - 1)}) + 1"))
+        print(line("by advantage", str(block_fee(parts)),
+                   "the same fee, inverted the slow way"))
+        verdict = ("free: the block already beats its parts with no fee at all"
+                   if fee == 0 else
+                   f"breaks the closed form from a fee of {fee} up")
+        print(f"  verdict  {verdict}")
+    return RC_OK
+
+
 def _print_fee_census(max_period: int, reduced: bool, arity: int,
                       verify_universe: int, as_json: bool) -> int:
     """The fee frontier is a law: two parts cost 2, and a fee of 1 needs a triple.
@@ -1122,6 +1170,13 @@ def _self_test() -> int:
     check("a pair needs a fee of two and (2, 3) attains it",
           (block_fee((2, 3)), block_fee((6, 10, 15)),
            block_fee((4, 8))), (2, 1, 0))
+    check("the fee is half the defect, divided by one less part -- not a search",
+          sum(block_fee(parts) != block_fee_closed(parts)
+              for period in range(2, 181, 2)
+              for parts in chain.from_iterable(
+                  combinations(universe(period), size) for size in (2, 3))), 0)
+    check("a block one short of perfect pays a fee of one",
+          (block_defect((6, 10, 15)), block_defect((6, 14, 21))), (1, -1))
     law = fee_frontier_census(max_period=200, verify_universe=10)
     check("the law holds on every period whose antichains were walked",
           (law["mismatches"],
@@ -1324,6 +1379,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_setup.add_argument("--max-setup", type=int, default=4,
                          help="largest fee per grid the walk reaches")
 
+    p_block_fee = sub.add_parser(
+        "block-fee",
+        help="the fee of one block, read off its defect: half the distance "
+             "between its lcm and its sum, over one less part")
+    p_block_fee.add_argument("parts", nargs="+", type=int,
+                             help="the grids folded into the block")
+
     p_fee = sub.add_parser(
         "fee-census",
         help="the fee at which the closed form breaks is always attained by a "
@@ -1405,6 +1467,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "setup-fee":
             return _print_setup_fee(args.period, args.universe == "reduced",
                                     args.max_setup, args.json)
+        if args.command == "block-fee":
+            return _print_block_fee(tuple(args.parts), args.json)
         if args.command == "fee-census":
             return _print_fee_census(args.max_period,
                                      args.universe == "reduced", args.arity,

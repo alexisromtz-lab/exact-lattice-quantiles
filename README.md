@@ -837,6 +837,69 @@ and nothing above it ever needs a triple. What changes between universes is not
 the pair law but where the frontier reaches zero -- and that is published as data,
 not assumed by the law.
 
+#### The fee of a block is not a search: it is half its defect
+
+`block_advantage` is affine in the fee with slope `n - 1`, so inverting it is one
+integer division -- and the numerator is not a coincidence. Write `delta` for
+the **defect** of a block, `sum - lcm`, the distance between buying every part
+and buying the one grid that covers them all, and `k` for the number of its odd
+parts. Then
+
+- if the lcm is even, `floor(lcm / 2) = lcm / 2` and every odd part contributes
+  `(p - 1) / 2`, so twice the advantage at a zero fee is `k - delta`;
+- if the lcm is odd, every part is odd, so it is `n - 1 - delta`.
+
+Either way `2 * B` is an integer and
+
+```
+fee(block) = 0                          if 2 * B < 0
+fee(block) = 2 * B // (2 * (n - 1)) + 1  otherwise
+```
+
+No antichain, no walk, no search: the fee of a block is **the defect, halved and
+divided by one less part**. Two shapes follow, and both are the ones the census
+above kept finding:
+
+```
+$ exact-lattice-quantiles block-fee 6 10 15
+block fee: (6, 10, 15)
+  lcm                     30              one grid covering every part
+  sum                     31              one grid per part
+  defect                  1               sum - lcm: zero is a perfect block
+  odd parts               1               k - defect, the lcm is even
+  twice B                 0               twice the advantage at a zero fee
+  fee                     1               floor(twice B / 4) + 1
+  by advantage            1               the same fee, inverted the slow way
+  verdict  breaks the closed form from a fee of 1 up
+
+$ exact-lattice-quantiles block-fee 6 21 28
+block fee: (6, 21, 28)
+  lcm                     84              one grid covering every part
+  sum                     55              one grid per part
+  defect                  -29             sum - lcm: zero is a perfect block
+  odd parts               1               k - defect, the lcm is even
+  twice B                 30              twice the advantage at a zero fee
+  fee                     8               floor(twice B / 4) + 1
+  by advantage            8               the same fee, inverted the slow way
+  verdict  breaks the closed form from a fee of 8 up
+```
+
+The two lines matter together: a block **one short of perfect** is the cheapest
+thing that can break the formula, and the further its lcm runs above its sum the
+more fee it needs before it is worth folding. That is why the fee of one needs a
+triple and why there are only two of them below 2000 -- for a triple with an even
+lcm the fee is one exactly when the defect sits within three of the odd-part
+count, a window two blocks wide in the whole horizon.
+
+The closed form is not a replacement for the instrument, it is a second reading
+of it, and the package keeps both: `block_fee` inverts the advantage the slow
+way, `block_fee_closed` divides once, and the two are compared on **every** block
+of two and three parts in both universes up to `T = 400` -- `42 287` blocks, `0`
+mismatches, which is the shape of a proof rather than a census. `block-fee`
+prints both rows side by side so a disagreement would be visible rather than
+argued about, and a block of one grid is refused with `RC 3` instead of being
+priced at zero.
+
 ### 5. A margin survives exactly zero drift
 
 The witness margin is a knife edge: the divisor that fixes it sits on the edge
@@ -1297,8 +1360,8 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 398 tests
-exact-lattice-quantiles --self-test           # 102 checks, RC 0
+python -m unittest discover -s tests -t .     # 405 tests
+exact-lattice-quantiles --self-test           # 104 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,
