@@ -37,7 +37,8 @@ from .lattice import (TABLE_BUDGET, MaskTableTooLarge, cell_widths,
                       grids, mask_table, universe)
 from .pricing import (antichain_saving_ceiling, band_slack, band_window,
                       block_catalogue,
-                      block_dominance_census, block_of, block_saving,
+                      block_advantage, block_dominance_census, block_of,
+                      block_saving,
                       carrier_block_of, carrier_block_saving, excess_parity,
                       exactness_frontier, extremal_census, heaviest_antichain,
                       odd_band_census,
@@ -45,7 +46,7 @@ from .pricing import (antichain_saving_ceiling, band_slack, band_window,
                       pair_antichain_saving, price_exact,
                       price_form_census, price_form_sweep, prime_excess,
                       reciprocal_filter_census, reciprocal_prime_sum,
-                      sign_regime, sign_theorem_census,
+                      setup_fee_frontier, sign_regime, sign_theorem_census,
                       strong_lemma_frontier, worst_antichain_weight)
 from .solve import OK, InfeasibleWithinBudget, ladder, solve_lattice_schedule
 
@@ -493,6 +494,51 @@ def _print_extremal_gap(max_period: int, as_json: bool) -> int:
     return RC_OK
 
 
+def _print_setup_fee(period: int, reduced: bool, max_setup: int,
+                     as_json: bool) -> int:
+    """The closed form's unstated hypothesis: no fixed cost per grid.
+
+    ``RC_NO_MEDIDO`` when no fee inside the horizon breaks the formula, because
+    a frontier beyond the horizon is not an absent frontier -- the caller asked
+    where the formula stops being the price and the answer was not reached.
+    """
+    row = setup_fee_frontier(period, reduced=reduced, max_setup=max_setup)
+    if as_json:
+        payload = {k: v for k, v in row.items() if k != "rows"}
+        payload["rows"] = [r.as_dict() for r in row["rows"]]
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        def line(label: str, value: str, note: str = "") -> str:
+            return f"  {label:<22}{value:<14}{note}"
+
+        print("setup fee: the closed form assumes a grid costs grid // 2 and nothing else")
+        print(line("period", str(period),
+                   f"{row['universe']} universe, |U| {row['universe_size']}, "
+                   f"{row['consumers']} requests"))
+        print(line("fee", "discrepancies", "pairs  witness"))
+        for r in row["rows"]:
+            pairs = str(r.pair_failures)
+            witness = (f"{tuple(r.witness)} by {r.witness_gap}"
+                       if r.witness else "-")
+            print(line(f"  {r.setup}", str(r.discrepancies),
+                       f"{pairs:>5}  {witness}"))
+        frontier = row["frontier"]
+        print(line("frontier", "none" if frontier is None else str(frontier),
+                   "first fee per grid that breaks the closed form"))
+        pairs_at = row["pair_frontier"]
+        print(line("pairs",
+                   "none" if pairs_at is None else str(pairs_at),
+                   "first fee at which a pair is what fails"))
+        print(f"  theorem  {row['theorem']}")
+        print(f"  verdict  {row['verdict']}")
+    if row["frontier"] is None:
+        print(f"NO_MEDIDO: no fee up to {max_setup} breaks the closed form on "
+              f"period {period} ({row['universe']}); the frontier is beyond the "
+              f"horizon, not absent", file=sys.stderr)
+        return RC_NO_MEDIDO
+    return RC_OK
+
+
 def _print_odd_band(max_omega: int, max_prime: int, slack: int | None,
                     as_json: bool) -> int:
     """The odd half of the band: a window through Giuga's equation, measured.
@@ -803,6 +849,20 @@ def _self_test() -> int:
     check("and a miss is always even, because the weights share a parity",
           (heavy["weight"] % 2, (30 + heavy["slack"]) % 2, heavy["miss"] % 2),
           (1, 1, 0))
+    check("a block that ties at a zero fee wins by its saved fees", 
+          (block_advantage((6, 10, 15)), block_advantage((6, 10, 15), 1)),
+          (0, 2))
+    check("an incomparable pair never wins at a zero fee",
+          max(block_advantage((a, b)) for a in (4, 6, 12, 20, 30, 60)
+              for b in (4, 6, 12, 20, 30, 60)
+              if a < b and b % a and a % b), -1)
+    fee = setup_fee_frontier(180, max_setup=2)
+    check("the closed form is the price until a fixed cost is charged",
+          [r.discrepancies for r in fee["rows"]], [0, 32, 146])
+    check("the first break is a triple, because folding saves k - 1 fees",
+          (fee["frontier"], fee["witness"]), (1, (6, 10, 15)))
+    check("and no pair explains that break: pairs need a fee of two",
+          (fee["rows"][1].pair_failures, fee["pair_frontier"]), (0, 2))
     try:
         heaviest_antichain(7)
     except ValueError:
@@ -1011,6 +1071,18 @@ def build_parser() -> argparse.ArgumentParser:
              "antichain, with the warrant of its region attached?")
     p_extremal.add_argument("--limit", type=int, default=2000)
 
+    p_setup = sub.add_parser(
+        "setup-fee",
+        help="find the first fixed cost per grid at which the closed form stops "
+             "being the price, and the request that breaks it")
+    p_setup.add_argument("--period", type=int, default=180)
+    p_setup.add_argument(
+        "--universe", choices=("reduced", "divisors"), default="reduced",
+        help="reduced carriers U(T), where the formula is exact at a zero fee, "
+             "or every divisor D(T), where it is already broken")
+    p_setup.add_argument("--max-setup", type=int, default=4,
+                         help="largest fee per grid the walk reaches")
+
     p_univ = sub.add_parser(
         "universes",
         help="census the reciprocal sum against both universes, period by "
@@ -1070,6 +1142,9 @@ def main(argv: list[str] | None = None) -> int:
             return _print_sign_theorem(args.max_period, args.json)
         if args.command == "extremal-gap":
             return _print_extremal_gap(args.limit, args.json)
+        if args.command == "setup-fee":
+            return _print_setup_fee(args.period, args.universe == "reduced",
+                                    args.max_setup, args.json)
         if args.command == "verify-acta":
             return _print_verify_acta(args.manifest, args.json, args.source)
         if args.command == "odd-band":

@@ -20,6 +20,13 @@ form, and :func:`price_form_census` states over how many requests of an
 instance the two agree -- separately for both universes, because the gap
 between them is the finding.  A closed form whose agreement is not censused is
 a guess with a proof on one side.
+
+The closed form also has a hypothesis nobody wrote down: the price of a grid is
+``grid // 2`` and nothing else.  Charge a fixed cost ``setup`` per grid bought
+and the formula stops being the price at ``setup = 1`` -- :func:`setup_fee_frontier`
+finds that first fee and the request that breaks it, and the theorem behind it
+is one line: folding a block of ``k`` grids into its lcm saves ``k - 1`` fees
+and pays the rest of the bill with ``sum(b // 2) - lcm(b) // 2``.
 """
 
 from __future__ import annotations
@@ -42,12 +49,28 @@ def maximal_divisors(needed: tuple[int, ...]) -> tuple[int, ...]:
                  if not any(e != d and e % d == 0 for e in needed))
 
 
-def price_one_per_maximal(needed: tuple[int, ...]) -> int:
+def price_one_per_maximal(needed: tuple[int, ...], setup: int = 0) -> int:
     """The closed form: buy one grid per maximal divisor.
 
-    Always a feasible price for ``needed``, never below the minimum.
+    Always a feasible price for ``needed``, never below the minimum -- and it
+    buys one grid per maximal, so a fixed cost ``setup`` per grid is paid once
+    per maximal.
     """
-    return sum(d // 2 for d in maximal_divisors(needed))
+    return sum(setup + d // 2 for d in maximal_divisors(needed))
+
+
+def block_advantage(parts: tuple[int, ...], setup: int = 0) -> int:
+    """Points a block of grids saves over buying its parts, fee included.
+
+    Positive means the block is cheaper than its parts, so the closed form --
+    which never buys a block -- is not the price on that request.  The identity
+    is ``setup * (len(parts) - 1) + sum(p // 2) - lcm(parts) // 2``: folding
+    ``k`` grids into one lcm refunds ``k - 1`` fees and pays the rest of the
+    bill with the parts' weight against the lcm's.
+    """
+    if not parts:
+        raise ValueError("a block needs at least one grid")
+    return sum(setup + p // 2 for p in parts) - (setup + lcm(*parts) // 2)
 
 
 def _maximal_table(U: tuple[int, ...]) -> list[int]:
@@ -83,7 +106,7 @@ def _maximal_table(U: tuple[int, ...]) -> list[int]:
 
 
 @lru_cache(maxsize=None)
-def _cheapest(period: int, reduced: bool
+def _cheapest(period: int, reduced: bool, setup: int = 0
               ) -> tuple[tuple[int, ...], tuple[int, ...], tuple[tuple[int, int], ...]]:
     """``(U, best, covers)`` where ``best[mask]`` is the cheapest cover of a superset.
 
@@ -109,8 +132,9 @@ def _cheapest(period: int, reduced: bool
         nxt = f[:]
         for s in range(size):
             v = f[s]
-            if v < _INF and v + M // 2 < nxt[s | mask]:
-                nxt[s | mask] = v + M // 2
+            cost = setup + M // 2
+            if v < _INF and v + cost < nxt[s | mask]:
+                nxt[s | mask] = v + cost
         f = nxt
     # A request is met by any cover of a superset of it.
     for i in range(len(U)):
@@ -121,7 +145,8 @@ def _cheapest(period: int, reduced: bool
     return U, tuple(f), tuple(covers)
 
 
-def price_exact(period: int, needed: tuple[int, ...], reduced: bool = True) -> int:
+def price_exact(period: int, needed: tuple[int, ...], reduced: bool = True,
+                setup: int = 0) -> int:
     """Cheapest design covering every element of ``needed``.
 
     The minimum over designs, by dynamic programming, and the state is the
@@ -155,7 +180,7 @@ def price_exact(period: int, needed: tuple[int, ...], reduced: bool = True) -> i
                 mask |= 1 << i
         if not mask:
             continue
-        cost = M // 2
+        cost = setup + M // 2
         nxt = list(best)
         for s in range(size):
             v = best[s]
@@ -178,6 +203,12 @@ class PriceFormCensus:
     saving_frontiers: int
     cheapest_cover: int
     one_grid: int
+    setup: int = 0
+    witness: tuple[int, ...] = ()
+    witness_gap: int = 0
+    witness_exact: int = 0
+    witness_form: int = 0
+    pair_failures: int = 0
 
     @property
     def share(self) -> Fraction:
@@ -201,11 +232,18 @@ class PriceFormCensus:
             "cheapest_cover": self.cheapest_cover,
             "one_grid": self.one_grid,
             "adequate": self.adequate,
+            "setup": self.setup,
+            "witness": list(self.witness),
+            "witness_gap": self.witness_gap,
+            "witness_exact": self.witness_exact,
+            "witness_form": self.witness_form,
+            "pair_failures": self.pair_failures,
         }
 
 
 def price_form_sweep(low: int, high: int, reduced: bool = True,
-                     max_masks: int = 1 << 22) -> dict[str, object]:
+                     max_masks: int = 1 << 22,
+                     setup: int = 0) -> dict[str, object]:
     """The census over every even period of a window, skipping the unaffordable.
 
     ``skipped`` is published rather than swallowed: a sweep that silently drops
@@ -224,7 +262,7 @@ def price_form_sweep(low: int, high: int, reduced: bool = True,
         if 1 << n > max_masks:
             skipped.append(period)
             continue
-        row = price_form_census(period, reduced=reduced)
+        row = price_form_census(period, reduced=reduced, setup=setup)
         periods += 1
         if row.adequate:
             adequate += 1
@@ -242,10 +280,12 @@ def price_form_sweep(low: int, high: int, reduced: bool = True,
         "cheaper_than_one_grid": cheaper,
         "costliest": costliest,
         "skipped": skipped,
+        "setup": setup,
     }
 
 
-def price_form_census(period: int, reduced: bool = True) -> PriceFormCensus:
+def price_form_census(period: int, reduced: bool = True,
+                      setup: int = 0) -> PriceFormCensus:
     """Census the closed form against the exact minimum, over every request.
 
     The cost is ``O(2^|U| * |grids|)``, and the size of ``U`` is what decides
@@ -259,28 +299,44 @@ def price_form_census(period: int, reduced: bool = True) -> PriceFormCensus:
     a frontier share the closed-form price, so ``frontiers`` counts how many
     distinct answers the formula can give, and a frontier *saves* when the
     exact price of that very frontier is below its closed form.
+
+    ``setup`` is a fixed cost charged once per grid bought.  At ``setup = 0``
+    the price of a grid is ``grid // 2`` and nothing else, which is the
+    hypothesis the closed form never states: ``witness`` and ``pair_failures``
+    publish where that hypothesis is what fails, and :func:`setup_fee_frontier`
+    finds the first ``setup`` that breaks it.
     """
-    U, best, covers = _cheapest(period, reduced)
+    U, best, covers = _cheapest(period, reduced, setup)
     n = len(U)
     table = _maximal_table(U)
     form_of: dict[int, int] = {}
     seen: set[int] = set()
     saving: set[int] = set()
     consumers = discrepancies = 0
+    witness: tuple[int, ...] = ()
+    witness_gap = witness_exact = witness_form = 0
+    pair_failures: set[int] = set()
     for mask in range(1, len(table)):
         exact = best[mask]
         maxmask = table[mask]
         form = form_of.get(maxmask)
         if form is None:
-            form = sum(U[i] // 2 for i in range(n) if maxmask >> i & 1)
+            form = sum(setup + U[i] // 2 for i in range(n) if maxmask >> i & 1)
             form_of[maxmask] = form
         consumers += 1
         if exact != form:
             discrepancies += 1
             saving.add(maxmask)
+            if form - exact > witness_gap:
+                witness_gap = form - exact
+                witness = tuple(U[i] for i in range(n) if maxmask >> i & 1)
+                witness_exact, witness_form = exact, form
+            if bin(maxmask).count("1") == 2:
+                pair_failures.add(maxmask)
         seen.add(maxmask)
     full = len(best) - 1
-    one_grid = min((M // 2 for M, mask in covers if mask == full), default=0)
+    one_grid = min((setup + M // 2 for M, mask in covers if mask == full),
+                   default=0)
     return PriceFormCensus(
         period=period,
         reduced=reduced,
@@ -291,7 +347,78 @@ def price_form_census(period: int, reduced: bool = True) -> PriceFormCensus:
         saving_frontiers=len(saving),
         cheapest_cover=best[full],
         one_grid=one_grid,
+        setup=setup,
+        witness=witness,
+        witness_gap=witness_gap,
+        witness_exact=witness_exact,
+        witness_form=witness_form,
+        pair_failures=len(pair_failures),
     )
+
+
+def setup_fee_frontier(period: int, reduced: bool = True,
+                       max_setup: int = 6) -> dict[str, object]:
+    """The least fixed cost per grid at which the closed form stops being the price.
+
+    The closed form buys one grid per maximal divisor and never buys a block, so
+    its price for a request with maximals ``A`` is ``sum(setup + a // 2)``.  A
+    block ``B`` costs ``setup + lcm(B) // 2``, and the difference is a one-line
+    identity (:func:`block_advantage`)::
+
+        advantage(B, setup) = setup * (len(B) - 1) + sum(b // 2) - lcm(B) // 2
+
+    Two consequences decide the frontier.  First, a block of ``k`` grids folds
+    ``k - 1`` fees into one, so the fee **favours the big block**: the requests
+    that break first are not the small pairs but the triples.  Second, for an
+    incomparable pair ``lcm(a, b) >= a + b`` gives ``sum(b // 2) <= lcm // 2``,
+    strictly, so ``advantage <= -1`` and **no pair can win below a fee of two**:
+    a census that only looked at pairs would report the closed form surviving
+    one fee further than it does.  The bound is attained rather than slack --
+    ``(2, 3)`` sits at exactly ``0`` once a fee is charged, so a fee of two is
+    not merely sufficient for a pair to win, it is the first that can.
+
+    So the frontier is measured over every request of the instance rather than
+    argued from pairs: ``rows`` is the census at each fee from zero to
+    ``max_setup``, ``frontier`` is the first row that is not adequate, and
+    ``pair_frontier`` is the first row where a pair is what fails (``None``
+    inside the horizon, which is the theorem above holding on the population).
+    """
+    if max_setup < 0:
+        raise ValueError("max_setup counts units of a fee, so it cannot be negative")
+    rows = tuple(price_form_census(period, reduced=reduced, setup=s)
+                 for s in range(max_setup + 1))
+    broken = next((r for r in rows if not r.adequate), None)
+    pairs = next((r for r in rows if r.pair_failures), None)
+    if broken is None:
+        verdict = (
+            f"NO_MEDIDO: no fee up to {max_setup} breaks the closed form on "
+            f"period {period}; the frontier is beyond the horizon, not absent")
+    else:
+        verdict = (
+            f"the closed form stops being the price at a fee of {broken.setup} "
+            f"per grid: {broken.discrepancies} of {broken.consumers} requests, "
+            f"witness {broken.witness} costs {broken.witness_exact} exact "
+            f"against {broken.witness_form} by the formula")
+    return {
+        "period": period,
+        "universe": "reduced" if reduced else "divisors",
+        "universe_size": rows[0].universe_size,
+        "max_setup": max_setup,
+        "rows": rows,
+        "frontier": None if broken is None else broken.setup,
+        "discrepancies": 0 if broken is None else broken.discrepancies,
+        "consumers": rows[0].consumers,
+        "witness": () if broken is None else broken.witness,
+        "witness_gap": 0 if broken is None else broken.witness_gap,
+        "witness_exact": 0 if broken is None else broken.witness_exact,
+        "witness_form": 0 if broken is None else broken.witness_form,
+        "pair_frontier": None if pairs is None else pairs.setup,
+        "theorem": (
+            "advantage(B, setup) = setup * (len(B) - 1) + sum(b // 2) - lcm(B) // 2; "
+            "an incomparable pair sits at -1 or below on a zero fee, so no fee "
+            "below 2 lets a pair win"),
+        "verdict": verdict,
+    }
 
 
 def _lcm(a: int, b: int) -> int:

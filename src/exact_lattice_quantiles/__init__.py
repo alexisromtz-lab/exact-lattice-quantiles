@@ -46,7 +46,7 @@ from .lattice import (TABLE_BUDGET, MaskTableTooLarge, carriers, cell_intervals,
                       cell_width, cell_widths, grids, mask_table, seats,
                       universe, universe_from_factorization, widths)
 from .pricing import (PriceFormCensus, antichain_saving_ceiling,
-                      best_block_saving, block_catalogue,
+                      best_block_saving, block_advantage, block_catalogue,
                       block_dominance_census, block_of, block_saving,
                       band_slack, band_window, carrier_block_of,
                       carrier_block_saving, exactness_frontier,
@@ -57,14 +57,14 @@ from .pricing import (PriceFormCensus, antichain_saving_ceiling,
                       price_exact, price_form_census,
                       price_form_sweep, price_one_per_maximal, prime_excess,
                       reciprocal_filter_census, reciprocal_prime_sum,
-                      sign_regime, sign_theorem_census,
+                      setup_fee_frontier, sign_regime, sign_theorem_census,
                       strong_lemma_frontier, two_adic,
                       worst_antichain_weight)
 from .solve import (OK, PROBES_INSUFFICIENT, UNDERCOVERED,
                     InfeasibleWithinBudget, Schedule, ladder,
                     solve_lattice_schedule)
 
-__version__ = "0.14.0"
+__version__ = "0.15.0"
 
 __all__ = [
     "Ceiling",
@@ -77,6 +77,8 @@ __all__ = [
     "sign_theorem_census",
     "heaviest_antichain",
     "extremal_census",
+    "block_advantage",
+    "setup_fee_frontier",
     "strong_lemma_frontier",
     "two_adic",
     "worst_antichain_weight",
