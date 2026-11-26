@@ -51,7 +51,10 @@ from .pricing import (PriceFormCensus, antichain_saving_ceiling,
                       block_defect, block_dominance_census, block_fee,
                       block_fee_closed, block_free, block_of, block_saving,
                       band_slack, band_window, carrier_block_of,
-                      carrier_block_saving, cofactor_block, exactness_frontier,
+                      carrier_block_saving, carrier_cofactors, carrier_image,
+                      carrier_law_census, carrier_universe_by_law,
+                      in_carrier_universe,
+                      cofactor_block, crossing_scalars, exactness_frontier,
                       free_margin, free_margin_census,
                       free_margin_cross,
                       excess_parity, extremal_census, fee_frontier_by_blocks,
@@ -62,6 +65,7 @@ from .pricing import (PriceFormCensus, antichain_saving_ceiling,
                       price_exact, price_form_census,
                       price_form_sweep, price_one_per_maximal, prime_excess,
                       reciprocal_filter_census, reciprocal_prime_sum,
+                      scaling_census, scaling_margin,
                       setup_fee_frontier, sign_regime, sign_theorem_census,
                       strong_lemma_frontier, two_adic,
                       worst_antichain_weight)
@@ -69,7 +73,7 @@ from .solve import (OK, PROBES_INSUFFICIENT, UNDERCOVERED,
                     InfeasibleWithinBudget, Schedule, ladder,
                     solve_lattice_schedule)
 
-__version__ = "0.22.0"
+__version__ = "0.23.0"
 
 __all__ = [
     "Ceiling",
@@ -88,6 +92,14 @@ __all__ = [
     "free_margin",
     "free_margin_census",
     "free_margin_cross",
+    "carrier_cofactors",
+    "carrier_universe_by_law",
+    "in_carrier_universe",
+    "carrier_law_census",
+    "carrier_image",
+    "scaling_margin",
+    "crossing_scalars",
+    "scaling_census",
     "arity_ladder_census",
     "block_fee",
     "block_fee_closed",

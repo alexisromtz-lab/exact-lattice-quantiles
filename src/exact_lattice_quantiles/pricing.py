@@ -53,11 +53,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from fractions import Fraction
 from functools import lru_cache
-from itertools import combinations
+from itertools import combinations, product
 from math import gcd, isqrt, lcm
 
 from .arithmetic import divisors, prime_factorization, primes_of
-from .lattice import cell_widths, grids, mask_table, universe
+from .lattice import carriers, cell_widths, grids, mask_table, universe
 
 _INF = 10**9
 
@@ -1199,6 +1199,304 @@ def free_margin_cross(max_period: int = 1200, reduced: bool = True) -> dict:
         "first_free": first_free,
         "disagreements": tuple(disagreements),
         "broken_witnesses": tuple(broken),
+        "verdict": verdict,
+    }
+
+
+def carrier_cofactors(a: int, limit: int = 64) -> tuple[int, ...]:
+    """Every ``q`` for which ``a`` carries the grid ``q * a``.
+
+    The census builds ``U(T)`` forwards: for every grid of the period it asks
+    which divisor sits at the median.  This is the same question backwards, and
+    backwards it is a property of the divisor alone: ``9`` carries ``18`` but
+    not ``36``, ``45`` carries ``90`` and ``180`` but not ``60``.  A divisor is
+    in a universe because *some* grid carries it, so the set of universes a
+    divisor belongs to is decided once, here, and never again.
+
+    Only even grids count -- ``carriers`` is defined on every integer but
+    :func:`universe` reads it on the even divisors of a period, and an odd grid
+    is not in any universe.
+
+    ``limit`` is a search bound, not a theorem: measured over every ``a`` up to
+    ``4000`` no cofactor above ``5`` occurs, ``5`` only at ``a = 504`` in the
+    grid ``2520``.  A caller who needs certainty beyond the limit takes the
+    route without one -- :func:`in_carrier_universe`, which ranges over the
+    divisors of ``T / a`` and so cannot miss a cofactor.
+    """
+    if a < 2:
+        raise ValueError(f"a carrier is at least two, got {a}")
+    if limit < 1:
+        raise ValueError(f"the cofactor limit is at least one, got {limit}")
+    return tuple(q for q in range(1, limit + 1)
+                 if (q * a) % 2 == 0 and a in carriers(q * a))
+
+
+def in_carrier_universe(a: int, period: int) -> bool:
+    """``a in U(period)``, decided by the divisor instead of by the grids.
+
+    ``a`` is a carrier of the grid ``q * a`` for some ``q`` dividing
+    ``period / a``; that is the whole condition, and it ranges over the
+    divisors of one quotient instead of over every grid of the period.  The
+    cost is ``tau(period / a)`` mass reads rather than ``period / 2`` seats per
+    grid, which is the difference between a census that can reach ``10000`` and
+    one that cannot.
+
+    The two routes agree on every even period to ``4000``, both universes
+    included: :func:`carrier_law_census` is the measurement, and a disagreement
+    there is the law failing, not the census.
+    """
+    if period < 2:
+        raise ValueError(f"a period is at least two, got {period}")
+    if a < 2:
+        raise ValueError(f"a carrier is at least two, got {a}")
+    if period % a:
+        return False
+    return any((q * a) % 2 == 0 and a in carriers(q * a)
+               for q in divisors(period // a))
+
+
+def carrier_universe_by_law(period: int) -> tuple[int, ...]:
+    """``U(period)`` as a filter over its divisors, with no grid built.
+
+    :func:`universe` unions the carriers of every even grid of the period;
+    this walks the divisors of the period once and asks each whether any grid
+    carries it.  Same set, other direction -- the direction in which the answer
+    is a property of the divisor, so a period can be asked about without
+    building any of its grids.
+    """
+    if period < 2:
+        raise ValueError(f"a period is at least two, got {period}")
+    return tuple(a for a in divisors(period)
+                 if a >= 2 and in_carrier_universe(a, period))
+
+
+def carrier_law_census(max_period: int = 1200) -> dict:
+    """Both routes to ``U(T)``, compared period by period.
+
+    The law is only worth having if it is the same set.  So every even period
+    to ``max_period`` is read twice -- once by the grids of :func:`universe`,
+    once by the divisors of :func:`carrier_universe_by_law` -- and the first
+    period where the two differ is the result.
+
+    Measured to ``4000``: no period differs, over ``2000`` periods and both
+    universes, and the law is the one that scales -- the grids route spends
+    ``T / 2`` seats per grid while the law spends ``tau(T / a)`` mass reads per
+    divisor.
+    """
+    if max_period < 2:
+        raise ValueError("the census needs at least one period to measure")
+    measured = 0
+    splits: list[dict] = []
+    for period in range(2, max_period + 1, 2):
+        by_grids = universe(period)
+        by_law = carrier_universe_by_law(period)
+        measured += 1
+        if by_grids != by_law:
+            splits.append({"period": period,
+                           "only_by_grids": tuple(sorted(set(by_grids)
+                                                         - set(by_law))),
+                           "only_by_law": tuple(sorted(set(by_law)
+                                                       - set(by_grids)))})
+    if measured == 0:
+        verdict = (f"nothing was measured: no even period up to {max_period}")
+    elif splits:
+        first = splits[0]
+        verdict = (f"the two routes to U(T) split at {first['period']}: only "
+                   f"the grids read {first['only_by_grids']}, only the law "
+                   f"reads {first['only_by_law']}, and {len(splits)} of "
+                   f"{measured} periods split")
+    else:
+        verdict = (f"the divisors and the grids name the same universe on all "
+                   f"{measured} even periods to {max_period}")
+    return {
+        "max_period": max_period,
+        "periods_measured": measured,
+        "splits": tuple(splits),
+        "verdict": verdict,
+    }
+
+
+def scaling_margin(block: tuple[int, ...], k: int) -> int:
+    """``free_margin(k * block)`` in closed form: ``k * defect - odd correction``.
+
+    A margin is a distance and a distance dilates: scaling a block by ``k``
+    scales its defect by ``k``, and the only term that does not dilate is the
+    parity of the odd parts, which flips on and off as ``k`` changes parity.
+    So ``margin(kA) = k * delta(A) - [k odd] * #{a in A : a odd}``, with no
+    search and no bound.
+
+    This is the identity a fee destroys.  ``block_fee`` floors a quotient, so
+    two blocks at distance ``0`` and distance ``-2`` read the same ``1``; the
+    margin reads ``0`` and ``14`` on the same pair.
+    """
+    if k < 1:
+        raise ValueError(f"a scale is at least one, got {k}")
+    delta = sum(block) - lcm(*block)
+    odd = sum(1 for a in block if a % 2)
+    return k * delta - (odd if k % 2 else 0)
+
+
+@lru_cache(maxsize=None)
+def _cofactors_below(horizon: int) -> dict[int, tuple[int, ...]]:
+    """``a -> every even grid ``q * a`` below ``horizon`` that ``a`` carries``.
+
+    Built from the grids up, because that is the direction in which one pass
+    answers for every divisor at once: ``horizon / 2`` grids, each read once,
+    instead of a search per divisor.  A grid is the only thing that puts a
+    divisor into a universe, so this table is the whole membership relation
+    below the horizon -- and it is the *set* of carrying grids, not a first
+    one: ``a in carriers(M)`` is not monotone in ``M``, so the least grid that
+    carries ``a`` is not enough to decide a period.
+
+    Measured over ``horizon = 20000``: the largest cofactor that occurs is
+    ``5``, at ``a = 504`` in the grid ``2520``.  That is a measurement and not
+    a bound, so no caller is allowed to prune on it.
+    """
+    table: dict[int, list[int]] = {}
+    for M in range(2, horizon + 1, 2):
+        for a in carriers(M):
+            if a <= M:
+                table.setdefault(a, []).append(M // a)
+    return {a: tuple(qs) for a, qs in table.items()}
+
+
+def carrier_image(max_divisor: int = 1000,
+                  grid_limit: int | None = None) -> dict:
+    """The divisors that are *some* grid's median, and the ones that never are.
+
+    A period is not a carrier of itself: ``a`` enters a universe only through a
+    grid that carries it, so a divisor that is no even grid's median belongs to
+    no ``U(T)`` at all, for any ``T``.  That set is thin and specific -- ``161``
+    of the ``1999`` divisors to ``2000`` -- and it holds the only periods where
+    the *divisor* universe ever touches the free line: ``30``, ``858`` and
+    ``1722`` are all in it, as is ``60``, where the carrier universe touches.
+
+    The list is a measurement: it is built by reading every even grid to
+    ``grid_limit`` (default ``20 * max_divisor``) and recording its median, so
+    a divisor missing from the image is missing *below that limit*.  The
+    default is measured, not proved -- the report says which limit it used.
+    """
+    if max_divisor < 2:
+        raise ValueError(f"a divisor is at least two, got {max_divisor}")
+    limit = grid_limit if grid_limit is not None else 20 * max_divisor
+    if limit < max_divisor:
+        raise ValueError("the grid limit must reach the largest divisor")
+    seen: set[int] = set()
+    for M in range(2, limit + 1, 2):
+        seen.update(carriers(M))
+    absent = tuple(a for a in range(2, max_divisor + 1) if a not in seen)
+    return {
+        "max_divisor": max_divisor,
+        "grid_limit": limit,
+        "carriers_measured": len(tuple(a for a in seen if a <= max_divisor)),
+        "absent": absent,
+        "verdict": (f"{len(absent)} of the {max_divisor - 1} divisors to "
+                    f"{max_divisor} are no even grid's median below {limit}, "
+                    f"so no period carries them"),
+    }
+
+
+def crossing_scalars(horizon: int = 4001,
+                     base: tuple[int, ...] = (6, 10, 15)) -> tuple[dict, ...]:
+    """Every scale of ``base`` that crosses the free line inside ``horizon``.
+
+    A scaled block is a block: ``k * (6, 10, 15)`` has lcm ``30k`` and margin
+    ``k - [k odd]``, so the crossing is decided entirely by whether its three
+    parts land in ``U(T)`` -- and each part lands iff a grid carrying it
+    divides ``T``.  So the smallest period that carries the scaled block is
+    ``min lcm(q1 * 6k, q2 * 10k, q3 * 15k)`` over the carrier cofactors of the
+    three parts, with no period swept to find it.
+
+    That makes this a prediction and not a census: the scalars below ``4001``
+    come out ``1, 9, 14, 18, 22, 27``, and ``27`` was not in the swept list at
+    ``3000`` because its witness is ``3240`` -- thirty periods past that
+    horizon and two hundred short of ``4001``.  Read forward, ``27`` crossing
+    at ``3240`` on ``(162, 270, 405)`` with margin ``26`` is the law saying
+    something the sweep had not.
+
+    A scale whose margin comes out ``0`` touches the line instead of crossing
+    it: ``k = 1`` is the Giuga triple itself, one reciprocal unit above ``1``.
+    """
+    if horizon < 2:
+        raise ValueError(f"a horizon is at least two, got {horizon}")
+    base = tuple(base)
+    if len(base) < 2:
+        raise ValueError("a block is at least two parts")
+    cofactors = _cofactors_below(horizon)
+    width = lcm(*base)
+    rows: list[dict] = []
+    for k in range(1, horizon // width + 1):
+        parts = tuple(k * a for a in base)
+        options = [cofactors.get(a, ()) for a in parts]
+        if not all(options):
+            continue
+        period = min(lcm(*(q * a for q, a in zip(choice, parts)))
+                     for choice in product(*options))
+        if period > horizon:
+            continue
+        rows.append({"k": k, "period": period, "block": parts,
+                     "margin": free_margin(parts),
+                     "margin_by_law": scaling_margin(base, k)})
+    return tuple(rows)
+
+
+def scaling_census(max_period: int = 1200,
+                   base: tuple[int, ...] = (6, 10, 15),
+                   cross_check: bool = True) -> dict:
+    """The law's forecast against the census of the universe, period by period.
+
+    The law says a crossing is a scaled Giuga block and nothing else, so the
+    two sets must be the same set: the periods the law names, and the periods
+    where :func:`free_margin` comes out positive somewhere in ``U(T)``.  Every
+    even period is read by the lcm reader (and, with ``cross_check``, by the
+    searching one as well, so a disagreement between the *readers* cannot pass
+    for agreement between the law and the census).
+
+    Measured to ``4001``: five crossing periods -- ``1080``, ``2160``,
+    ``2520``, ``3240``, ``3960`` -- the law's five, no sixth, and the two
+    readers agree on all ``1989`` periods.
+    """
+    if max_period < 2:
+        raise ValueError("the census needs at least one period to measure")
+    forecast = {}
+    for row in crossing_scalars(max_period, base):
+        if row["margin"] > 0:
+            forecast[row["period"]] = row
+    measured: dict[int, dict] = {}
+    reader_splits: list[int] = []
+    periods = 0
+    for period in range(2, max_period + 1, 2):
+        pool = universe(period)
+        periods += 1
+        margin, block = _best_margin_by_lcm(pool)
+        if cross_check:
+            other, _ = _best_margin(pool)
+            if other != margin:
+                reader_splits.append(period)
+        if margin is not None and margin > 0:
+            measured[period] = {"period": period, "margin": margin,
+                                "block": tuple(sorted(block))}
+    missing = tuple(sorted(set(forecast) - set(measured)))
+    extra = tuple(sorted(set(measured) - set(forecast)))
+    wrong = tuple(sorted(
+        p for p in set(forecast) & set(measured)
+        if forecast[p]["margin"] != measured[p]["margin"]))
+    if reader_splits:
+        verdict = (f"the two readers of U(T) disagree at {reader_splits[0]}, so "
+                   f"no law can be read against them")
+    elif missing or extra or wrong:
+        verdict = (f"the law misses {missing}, invents {extra} and misprices "
+                   f"{wrong}: the crossing periods are not the scaled blocks")
+    else:
+        verdict = (f"the law and the census name the same {len(measured)} "
+                   f"crossing periods to {max_period}, out of {periods} even "
+                   f"periods read twice")
+    return {
+        "max_period": max_period,
+        "periods_measured": periods,
+        "forecast": tuple(forecast[p] for p in sorted(forecast)),
+        "measured": tuple(measured[p] for p in sorted(measured)),
+        "reader_splits": tuple(reader_splits),
         "verdict": verdict,
     }
 

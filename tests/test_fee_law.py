@@ -26,12 +26,17 @@ from itertools import combinations
 
 from exact_lattice_quantiles import (arity_ladder_census, block_advantage,
                                      block_defect, block_fee, block_fee_closed,
-                                     block_free, cofactor_block,
+                                     block_free, carrier_cofactors,
+                                     carrier_image, carrier_law_census,
+                                     carrier_universe_by_law, carriers,
+                                     cofactor_block, crossing_scalars,
                                      fee_frontier_by_blocks,
                                      fee_frontier_census, free_margin,
                                      free_margin_census, free_margin_cross,
-                                     grids, universe)
+                                     grids, in_carrier_universe,
+                                     scaling_census, scaling_margin, universe)
 from exact_lattice_quantiles.cli import main
+from exact_lattice_quantiles.pricing import _best_margin
 
 
 class TheFeeOfABlock(unittest.TestCase):
@@ -613,3 +618,134 @@ class TheSecondReader(unittest.TestCase):
         self.assertEqual(rc, 4)
         self.assertIn("NO_MEDIDO", err.getvalue())
         self.assertNotIn("the two readers agree", out.getvalue())
+
+
+class TheCarrierLaw(unittest.TestCase):
+    """``U(T)`` is a filter over divisors, not a census over grids.
+
+    ``universe(T)`` builds every even grid of the period and unions their
+    medians; that is a *forwards* definition, and forwards the answer costs
+    ``T / 2`` seats per grid.  The law says the same set can be read
+    *backwards*: a divisor ``a`` is in ``U(T)`` iff some even grid ``q * a``
+    dividing ``T`` carries it, which is a question about the divisor and its
+    cofactor alone.  The two routes must name the same set -- otherwise the law
+    is a different universe wearing the same name.
+    """
+
+    def test_both_directions_name_the_same_universe(self):
+        row = carrier_law_census(600)
+        self.assertEqual(row["splits"], ())
+        self.assertEqual(row["periods_measured"], 300)
+        self.assertIn("same universe", row["verdict"])
+
+    def test_the_divisor_is_in_the_universe_iff_a_grid_carries_it(self):
+        for period in (60, 120, 180, 360, 1080, 2520):
+            self.assertEqual(carrier_universe_by_law(period),
+                             tuple(sorted(universe(period))))
+        self.assertTrue(in_carrier_universe(6, 60))
+        self.assertFalse(in_carrier_universe(30, 60))
+        self.assertFalse(in_carrier_universe(7, 60))
+
+    def test_a_divisor_no_grid_carries_is_in_no_universe_at_all(self):
+        """The periods where the *divisor* universe touches the free line are
+        ``30``, ``858`` and ``1722``; the first two are carried by no grid, so
+        no ``U(T)`` ever holds them.  The carrier universe touches at ``60``,
+        which is likewise uncarried -- the line is where a divisor is not."""
+        image = carrier_image(900)
+        self.assertIn(30, image["absent"])
+        self.assertIn(858, image["absent"])
+        self.assertIn(60, image["absent"])
+        self.assertNotIn(6, image["absent"])
+        self.assertNotIn(15, image["absent"])
+        for period in (60, 120, 180, 300, 600):
+            self.assertNotIn(30, universe(period))
+            self.assertNotIn(60, universe(period))
+
+    def test_the_cofactor_route_and_the_membership_test_agree(self):
+        for a in (6, 10, 12, 15, 45, 90, 105, 504):
+            self.assertEqual(carrier_cofactors(a, limit=16),
+                             tuple(q for q in range(1, 17)
+                                   if (q * a) % 2 == 0
+                                   and a in carriers(q * a)))
+
+
+class TheScalarLaw(unittest.TestCase):
+    """Which multiples of ``(6, 10, 15)`` clear the free line, and when.
+
+    The margin is not the question: ``margin(kA) = k - [k odd]``, positive for
+    every ``k >= 2``.  What decides a crossing is whether the three scaled
+    parts can all land in the same ``U(T)`` -- a membership question, answered
+    by the carrier grids, and answered without sweeping a single period.
+    """
+
+    def test_the_scaled_margin_is_the_scale_minus_its_parity(self):
+        base = (6, 10, 15)
+        for k in range(1, 41):
+            block = tuple(k * a for a in base)
+            self.assertEqual(free_margin(block), k - (k % 2))
+            self.assertEqual(scaling_margin(base, k), free_margin(block))
+
+    def test_the_law_forecasts_every_crossing_to_4001(self):
+        rows = [row for row in crossing_scalars(4001) if row["margin"] > 0]
+        self.assertEqual([(row["k"], row["period"], row["margin"])
+                          for row in rows],
+                         [(9, 1080, 8), (14, 2520, 14), (18, 2160, 18),
+                          (22, 3960, 22), (27, 3240, 26)])
+        for row in rows:
+            self.assertEqual(row["margin"], free_margin(row["block"]))
+            self.assertEqual(row["margin"], row["margin_by_law"])
+
+    def test_the_law_names_a_crossing_no_sweep_to_3000_could_see(self):
+        """``k = 27`` crosses at ``3240``, past the horizon every census before
+        v0.23.0 used.  The law reads it off the grids of the scaled parts; the
+        universe of ``3240`` then confirms it with both readers."""
+        rows = {row["k"]: row for row in crossing_scalars(4001)}
+        self.assertNotIn(27, {row["k"] for row in crossing_scalars(3000)})
+        self.assertEqual(rows[27]["period"], 3240)
+        self.assertEqual(rows[27]["block"], (162, 270, 405))
+        self.assertEqual(rows[27]["margin"], 26)
+        self.assertEqual(free_margin(rows[27]["block"]), 26)
+        self.assertEqual(_best_margin(universe(3240))[0], 26)
+
+    def test_the_census_of_the_universe_finds_no_sixth_crossing(self):
+        row = scaling_census(1200)
+        self.assertEqual(row["reader_splits"], ())
+        self.assertEqual([r["period"] for r in row["forecast"]],
+                         [r["period"] for r in row["measured"]])
+        self.assertEqual([r["period"] for r in row["measured"]], [1080])
+
+    def test_a_scale_that_cannot_land_is_not_a_crossing(self):
+        """``k = 5`` has margin ``4`` and is still no crossing: ``6 * 5 = 30``
+        is carried by no even grid, so no period holds the scaled block and
+        the margin is a number about a block that cannot be built."""
+        self.assertEqual(scaling_margin((6, 10, 15), 5), 4)
+        self.assertIn(30, carrier_image(100)["absent"])
+        self.assertNotIn(5, {row["k"] for row in crossing_scalars(4001)})
+
+    def test_the_command_reads_the_universe_both_ways_and_says_so(self):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = main(["carrier-law", "--max-period", "120",
+                       "--max-divisor", "100"])
+        self.assertEqual((rc, err.getvalue()), (0, ""))
+        self.assertIn("periods read twice", out.getvalue())
+        self.assertIn("no grid carries", out.getvalue())
+
+
+class TheScalarLawCommand(unittest.TestCase):
+    def test_the_command_names_the_scale_and_the_period(self):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = main(["scalar-law", "--max-period", "1200"])
+        self.assertEqual((rc, err.getvalue()), (0, ""))
+        self.assertIn("1080 (k=9, margin 8)", out.getvalue())
+        self.assertIn("same 1 crossing periods", out.getvalue())
+
+    def test_a_json_run_carries_the_forecast_and_the_census(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = main(["scalar-law", "--max-period", "240", "--json"])
+        row = json.loads(out.getvalue())
+        self.assertEqual(rc, 0)
+        self.assertEqual([r["period"] for r in row["forecast"]], [])
+        self.assertEqual([r["period"] for r in row["measured"]], [])
