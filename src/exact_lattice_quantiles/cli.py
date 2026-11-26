@@ -29,7 +29,8 @@ from .acta import (ManifestError, SourceError, inspect_source, load_manifest,
                    parse_tables, render, shipped_manifest, verify_file,
                    verify_manifest)
 from .coverage import (coverage_census, coverage_kernel, design_law, drift_law,
-                       drift_radius, drift_tolerance, minimum_cost_design,
+                       drift_radius, drift_tolerance, guaranteed_margin,
+                       margin_under_drift, minimum_cost_design,
                        witness_margin)
 from .arithmetic import primes_of
 from .lattice import (TABLE_BUDGET, MaskTableTooLarge, cell_widths,
@@ -185,6 +186,11 @@ def _print_drift(args: argparse.Namespace) -> int:
         kept = schedule.witness_margin * share
         tol = min(drift_tolerance(schedule.design, Q, U, kept).values()) if Q else Fraction(0)
         curve.append((kept, tol))
+    kept_by_divisor: dict[int, Fraction] = {}
+    kept = Fraction(0)
+    if args.delta is not None and Q:
+        kept_by_divisor = margin_under_drift(schedule.design, Q, U, args.delta)
+        kept = min(kept_by_divisor.values())
     design = design_law(schedule.design, Q, U) if Q else None
     divisor_laws = drift_law(schedule.design, Q, U) if Q else {}
     if args.json:
@@ -205,6 +211,10 @@ def _print_drift(args: argparse.Namespace) -> int:
                 for d, law in sorted(divisor_laws.items())
             },
             "kept_margin_to_drift": [[str(v), str(t)] for v, t in curve],
+            "delta": None if args.delta is None else str(args.delta),
+            "guaranteed_margin": None if args.delta is None else str(kept),
+            "divisor_guaranteed_margin": None if args.delta is None else
+            {str(d): str(g) for d, g in sorted(kept_by_divisor.items())},
         }, indent=2, sort_keys=True))
         return RC_OK
     print(f"period           {schedule.period}")
@@ -220,8 +230,12 @@ def _print_drift(args: argparse.Namespace) -> int:
             print(f"narrowest        divisor regime ends at {design.first_divisor_break}"
                   f"  (pessimistic: the design pays nothing there)")
     print("margin kept      drift tolerated")
-    for kept, tol in curve:
-        print(f"  {str(kept):<15} {tol}")
+    for share, tol in curve:
+        print(f"  {str(share):<15} {tol}")
+    if args.delta is not None:
+        print(f"under drift      {args.delta}  ->  keeps margin {kept}")
+        print(f"budget           one currency: keeping {kept} under that drift "
+              f"prices the same as keeping {kept + args.delta} with none")
     return RC_OK
 
 
@@ -630,6 +644,21 @@ def _self_test() -> int:
     check("a critical margin feeds back in the undoubled view too",
           drift_tolerance(G, Q, U, half[d_half].critical_margin, doubled=False)[d_half],
           half[d_half].radius - half[d_half].critical_margin - half[d_half].cliff)
+    check("drift spends the margin one-for-one",
+          guaranteed_margin(G, Q, U, Fraction(1, 60)),
+          s.witness_margin - Fraction(1, 60))
+    check("and the inverse round-trips",
+          min(drift_tolerance(G, Q, U,
+                              guaranteed_margin(G, Q, U, Fraction(1, 60))).values()),
+          Fraction(1, 60))
+    check("a margin past the drift is not kept",
+          min(drift_tolerance(G, Q, U,
+                              guaranteed_margin(G, Q, U, Fraction(1, 60))
+                              + Fraction(1, 1000)).values()) < Fraction(1, 60), True)
+    check("no drift keeps the whole witness margin",
+          guaranteed_margin(G, Q, U), s.witness_margin)
+    check("drift wider than the margin keeps none",
+          guaranteed_margin(G, Q, U, s.witness_margin * 2), Fraction(0))
     check("block of 270 is {54, 90, 135}", block_of(270)[0], (54, 90, 135))
     check("block of 270 saves 4", block_saving(270), 4)
     check("block of 30 saves nothing", block_saving(30), 0)
@@ -823,6 +852,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_drift.add_argument("--max-cost", type=int, required=True)
     p_drift.add_argument("--probes", type=int, required=True)
     p_drift.add_argument("--min-margin", type=_fraction, default=None)
+    p_drift.add_argument(
+        "--delta", type=_fraction, default=None,
+        help="common drift to absorb; prints the margin the schedule still keeps")
 
     p_ladder = sub.add_parser("ladder", help="cost -> best margin for one period")
     p_ladder.add_argument("period", type=int)

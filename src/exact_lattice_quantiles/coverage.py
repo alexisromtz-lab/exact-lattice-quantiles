@@ -356,6 +356,83 @@ def drift_tolerance(G: tuple[int, ...], Q: tuple[Fraction, ...],
     return out
 
 
+def _largest_shrink(spans: list[tuple[Fraction, Fraction]],
+                    need: Fraction) -> Fraction:
+    """Largest shrink whose reach still covers ``need``, in span currency.
+
+    :func:`drift_tolerance` maps a shrink to a reach; this inverts it.  The
+    reach is linear with slope ``-1`` between two values of :func:`_shrinks`
+    and jumps *down* at each of them, so the valid set is a prefix of every
+    interval and the answer is read from the top down.  The endpoints are
+    tested separately because a jump lands on the knot itself: a margin exactly
+    at a knot can still be held when every larger one cannot.
+    """
+    radius = _reach_from_zero(spans)
+    if need <= 0:
+        return radius
+
+    def reach_at(shrink: Fraction) -> Fraction:
+        return _reach_from_zero([(a + shrink, b - shrink) for a, b in spans])
+
+    levels = sorted({Fraction(0), radius} | {k for k in _shrinks(spans) if k < radius})
+    for low, high in reversed(list(zip(levels, levels[1:]))):
+        # The reach is non-increasing, so the highest interval whose floor still
+        # covers ``need`` holds the supremum.  It is the line's own answer, and
+        # it is a supremum when the reach jumps at ``high``: there the shrink is
+        # approached, not held.
+        if reach_at(low) >= need:
+            return min(high, radius - need)
+    return Fraction(0)
+
+
+def margin_under_drift(G: tuple[int, ...], Q: tuple[Fraction, ...],
+                       U: tuple[int, ...], delta: Fraction = Fraction(0),
+                       doubled: bool = True) -> dict[int, Fraction]:
+    """Largest margin each divisor keeps while absorbing a common drift.
+
+    The inverse of :func:`drift_tolerance`, and the reading a service level
+    actually needs: not "how much drift does this margin tolerate" but "how
+    much margin survives the drift I have".  A common drift moves every section
+    at once, so the two are one quantity read from either end.
+
+    It is a **supremum**: at a break the tolerance jumps down, so the last
+    margin before the jump is approached and not held.  The guarantee is strict
+    -- any margin below the answer tolerates ``delta``, the answer itself may
+    not.
+
+    The design-level reading is the ``min`` over divisors, as everywhere else.
+    For a design whose tolerance is ``radius - v`` all the way to zero -- every
+    design the solver returns in the census of :func:`design_law` -- the answer
+    is exactly ``witness_margin - delta`` and the exchange is one-for-one.  A
+    design that is *not* cheapest can carry a coverage radius above its witness
+    margin, and that extra reach is not spendable as margin: it breaks at a
+    break below the radius, where the tolerance falls to zero instead of paying
+    the line.
+    """
+    if delta < 0:
+        raise ValueError("delta is a drift magnitude and cannot be negative")
+    scale = 2 if doubled else 1
+    need = Fraction(delta) / scale
+    return {d: _largest_shrink(_spans(G, Q, d), need) * scale for d in U}
+
+
+def guaranteed_margin(G: tuple[int, ...], Q: tuple[Fraction, ...],
+                      U: tuple[int, ...], delta: Fraction = Fraction(0),
+                      doubled: bool = True) -> Fraction:
+    """Margin this design keeps on every divisor while absorbing ``delta``.
+
+    One number for the whole schedule: the ``min`` of
+    :func:`margin_under_drift`, and a supremum like it -- every margin strictly
+    below the answer tolerates ``delta``.
+
+    Drift is not a second budget: it is spent from the margin.  A design that
+    keeps ``v`` under a drift of ``delta`` is the same design as one kept at
+    ``v + delta`` with no drift, so a service level is one margin to search and
+    not two budgets to trade.
+    """
+    return min(margin_under_drift(G, Q, U, delta, doubled).values())
+
+
 def _spans(G: tuple[int, ...], Q: tuple[Fraction, ...],
            d: int) -> list[tuple[Fraction, Fraction]]:
     """Admissible drifts ``(L - q, R - q)`` for one divisor, at margin zero."""

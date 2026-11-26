@@ -824,6 +824,85 @@ the second check fails if `_linear_regime` is replaced by "the line holds
 everywhere" — and [tests/test_design_linearity.py](tests/test_design_linearity.py)
 pins the design half.
 
+## Drift is not a second budget
+
+The price above is paid in one currency. A design that holds a margin `v` under
+a common drift `delta` is quoted as one number, `v + delta`, and 0.13.0 reads
+the exchange in both directions:
+
+```python
+guaranteed_margin(G, Q, U, delta)    # the margin the sections still keep
+margin_under_drift(G, Q, U, delta)   # the same, per divisor
+```
+
+`guaranteed_margin` is the inverse of `drift_tolerance`, and it is how the
+fourth margin above should be read: drift buys nothing on its own, it is spent
+from the witness margin. On `T = 180` the cheapest design for `1/30` holds
+`1/15` with no drift at all, so a `1/60` drift leaves it half of that:
+
+```
+$ exact-lattice-quantiles drift 180 --max-cost 64 --probes 4 --min-margin 1/30 --delta 1/60
+period           180
+design           [12, 18, 20, 45]
+cost             47 points (budget 64)
+sections (4)  ['1/30', '17/30', '7/10', '83/90']
+witness margin   1/15
+coverage drift   1/15  (captured, margin not kept)
+tolerance(v)     1/15 - v for every v up to 1/15  (one-for-one, no cliff)
+narrowest        divisor regime ends at 2/45  (pessimistic: the design pays nothing there)
+margin kept      drift tolerated
+  1/15            0
+  1/20            1/60
+  1/30            1/30
+  1/60            1/20
+  0               1/15
+under drift      1/60  ->  keeps margin 1/20
+budget           one currency: keeping 1/20 under that drift prices the same as keeping 1/15 with none
+```
+
+Read off the table instead of the law: `1/20` kept at `1/60` drift is the same
+row as `1/15` kept at no drift, one budget spent either way.
+
+Two measurements, one over the 60 even periods `2..120`, both budgets
+`{the cover price, 64}`, `k` in `{2, 4}`, `delta` in `{0, 1/120, 1/60, 1/30}` —
+**641 readings**:
+
+- `guaranteed_margin(design, Q, U, delta) == witness_margin - delta` in
+  **641 of 641**. No exception, no cliff: the law is not a fit, it is the
+  arithmetic of a design bought at its cover price;
+- the inverse round-trips in the same **641 of 641**:
+  `drift_tolerance(..., guaranteed_margin(..., delta)) == delta`.
+
+The exchange rate is the **witness margin**, not the coverage radius, and the
+two part company as soon as a design is not bought at its cheapest cost. In
+**354 of 1800** random section sets the radius exceeds the witness margin, and
+what the radius adds is not margin:
+
+```
+T = 12, grids (4, 6), sections (1/6, 1/4, 1/2, 7/12, 11/12)
+witness margin   1/6
+coverage drift   1/3
+tolerance(1/12)  1/4        <- the line is r - v here
+tolerance(1/6)   0          <- divisor 2 breaks exactly at the witness margin
+guaranteed_margin(delta = 1/100)   = 1/6, not 1/3 - 1/100
+guaranteed_margin(delta = 1/4)     = 1/12 = 1/3 - 1/4
+```
+
+The sixth above `1/6` is reach the sections have and margin they never held. So
+`drift_radius` is what the sections **cover**, never what they **keep**, and a
+caller who quotes it as a guarantee quotes a number the schedule cannot hold.
+
+One reading rule, because it changes the answer: the value returned is a
+**supremum**. Where a divisor breaks, the margin it names is approached, not
+attained — `drift_tolerance` at that value is `0`. The guarantee is therefore
+strict: every margin strictly below the answer tolerates the drift. Reading an
+attained value instead would understate the answer by an arbitrary amount; on
+the design above at `delta = 1/6` it reports `1/12` where the sections keep
+`1/6`.
+
+[tests/test_drift_budget.py](tests/test_drift_budget.py) pins the law, the
+round-trip, and the gap.
+
 ## Exactness
 
 Everything the library computes and returns is `int` or
@@ -838,8 +917,8 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 287 tests
-exact-lattice-quantiles --self-test           # 68 checks, RC 0
+python -m unittest discover -s tests -t .     # 309 tests
+exact-lattice-quantiles --self-test           # 76 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,
