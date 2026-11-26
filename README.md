@@ -444,36 +444,69 @@ when `v2(L) = 1`, none when `4` divides `L` -- so the whole sign reading is
     band  <=>  1 <= M <= slack(L),
 
 with `slack = 0` when `4 | L`, `1` when `v2(L) = 1`, and `w - 1` when `L` is
-odd. `band_slack` and `prime_excess` are that predicate, and the test
-`tests/test_odd_band.py::TheUnifiedLaw` holds them against `block_saving` for
-every `L` from `6` to `2000`: one arithmetic statement behind all three rows of
-the census, not three cases.
+odd.
+
+*The law is a congruence, not a census.* `M = sum_{p|L} L/p - L`, read modulo
+two, counts exactly the primes whose cofactor is odd, minus whether `L` is odd --
+which is `slack` by definition:
+
+    M  ===  #{p : L/p odd}  -  [L odd]  (mod 2)  =  slack(L)  (mod 2),
+
+so `M - slack` is always even, the division in `block_saving` never drops a
+unit, and the statement holds for **every** `L` with `w >= 2` instead of for the
+`2000` periods it was measured over. `excess_parity(L)` is that residue;
+`tests/test_band_parity.py` holds it against `prime_excess` on every period to
+`2000` and against `block_saving` on the same population. The `w = 1` corner is
+where it fails (`L = 4` has `M = -2` against `slack = 0`), so the function
+refuses a prime period rather than returning a number the law cannot use.
+
+One corollary reaches the open problem. On an odd period `slack = w - 1`, hence
+`M === w - 1 (mod 2)`: an odd Giuga number would need `M = 1`, and `M = 1`
+forces an **even** number of prime factors. No odd Giuga number is known; this
+does not shorten the search, but it turns the corner from a point into a parity
+class. It is also why the even band is a single point -- `v2(L) = 1` gives
+`slack = 1`, so the band is `M = 1` and nothing else.
 
 The odd row is the one the proof could not close, because `M = 1` there *is* an
 odd Giuga number -- `sum(1/p) - prod(1/p) = 1` -- open since 1950. It is no
 longer an unexplained residue either: the band is a window, and the window has a
 floor. Eight odd primes are not enough to cross one (`111429982/111546435`, short
-by `116453/111546435`), so the first candidate sits at `w = 9`, where its excess
-is already `108169298` against a slack of `8`:
+by `116453/111546435`), so the first candidate sits at `w = 9`:
 
 ```
-$ exact-lattice-quantiles odd-band
+$ exact-lattice-quantiles odd-band --max-omega 10 --max-prime 100
 odd band: 1 <= period * (sum 1/p - 1) <= omega - 1
-  odd primes available                    34  at most 150
-  prefixes walked                     355291  minimal feasible sets only
+  odd primes available                    24  at most 100
+  prefixes walked                      13866  minimal feasible sets only
   threshold                         omega - 1  omega - 1 by law
   feasibility floor                 omega = 9  product 3234846615 clears the window by 108169298
   members in the band                      0
-  boundary: an odd member with excess 1 is an odd Giuga number, sum(1/p) - prod(1/p) = 1, open since 1950
-  verdict: no odd period in the band over 355291 prefixes: at most 11 odd primes, each at most 150
+  nearest miss                         99604  clears the band by 99596 at omega = 9
+  3 5 7 11 13 17 19 43 47              99604  the closest approach from above
+  omega 9                               99604  by 99596 over 8
+  omega 10                            6669349  by 6669340 over 9
+  parity of the excess              consistent  for an odd period, prime_excess(n) === omega - 1 (mod 2)
+  boundary: an odd member with excess 1 would be an odd Giuga number, sum(1/p) - prod(1/p) = 1, open since 1950 -- and the parity of the excess puts that corner at even omega
+  verdict: no odd period in the band over 13866 prefixes: at most 10 odd primes, each at most 100
 ```
 
-`355291` is what verifies, not what it would take to search: the walk enumerates
+The floor and the margin are different optima, and the walk now answers both.
+The floor minimises the **product** that crosses one; the margin minimises the
+**excess** and reports the nearest miss with the primes that produce it --
+`{3, 5, 7, 11, 13, 17, 19, 43, 47}`, `L = 9801536745`, excess `99604` against a
+slack of `8`: the band is missed by `99596`, eight thousand times closer than the
+floor witness whose own product is three times smaller. `margin` carries that row
+for every `w`, and `parity` re-checks the congruence on each one, so an empty
+answer comes back as a distance with a witness instead of a silence.
+
+`13866` is what verifies, not what it would take to search: the walk enumerates
 only *minimally feasible* sets, because `M(P + q) = q * M(P) + L(P)` with
 `M({}) = -1` means every proper subset of a member has `M <= 0` -- otherwise the
 member would need an excess above `w - 1` for `w < 19686`, which the recursion
 forbids. So the search of an open question stays finite, and it is finite at
-`w = 12` and primes to `200` too: `8410793` prefixes in `31.5 s`, no member.
+`w = 12` and primes to `200` too: `8410793` prefixes in `31.5 s`, no member --
+and at `w = 13` with primes to `250`: `102422466` prefixes in `700.7 s`, still
+none.
 
 An empty answer from a pruned walk proves nothing unless the pruning is blind
 -proofed, so the same walk runs with the threshold lifted to `10**9`: it returns
@@ -805,8 +838,8 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 273 tests
-exact-lattice-quantiles --self-test           # 63 checks, RC 0
+python -m unittest discover -s tests -t .     # 287 tests
+exact-lattice-quantiles --self-test           # 68 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,
