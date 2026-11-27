@@ -1889,6 +1889,21 @@ never consults the seat map, so the two readings cannot quietly converge again.
 
 See `CITATION.cff`. Author ORCID: [0009-0001-9116-075X](https://orcid.org/0009-0001-9116-075X).
 
+Version 0.24.0 is archived in Software Heritage, and the identifiers below are
+the archive's answer and not a string this repository composed:
+
+    swh:1:rev:09755ab197f150266e1e33fd38c797bdf3b2f362
+    swh:1:dir:339aea49c88e34f759bdcf6c9b1b61c22207fcab
+    swh:1:snp:88fc2654eef9ad1c2ade963923095783c72323db
+
+The revision is the merge commit of `#28`; the directory is what the archive
+resolved from it, and the snapshot is the whole origin, branches included. They
+are quoted only after `/api/1/revision/<sha>/` returned them: an identifier that
+resolves is evidence, and one that does not is decoration. No DOI is published
+here, because a DOI has not been minted -- the deposit needs a token this
+repository does not carry, and a written DOI that resolves to nothing would be
+the same failure this package exists to measure.
+
 ## License
 
 MIT.
