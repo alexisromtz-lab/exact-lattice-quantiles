@@ -1466,6 +1466,9 @@ def _self_test() -> int:
           (set(gaps["gap"]) <= set(twos["two_gap"]),
            sorted(set(twos["two_gap"]) - set(gaps["gap"]))[:3]),
           (True, [84, 90, 105]))
+    check("and the sixes are a horizon, not a law: 3465 is no multiple of six",
+          (3465 % 6, carrier_cofactor_window(3465), carrier_cofactors(3465)),
+          (3, (2, 2106), ()))
     check("the two halves of a totient sum are the number itself",
           [n for n in range(1, 601)
            if upper_half_mass(n) + lower_half_mass(n) != n], [])
@@ -1806,12 +1809,17 @@ def _print_carrier_law(max_period: int, max_divisor: int, as_json: bool,
                    "sum(phi(d) for d | a) = a keeps q = 2 inside every window"))
         print(line("in window, uncarried", str(len(windows["gap"])),
                    ", ".join(str(a) for a in windows["gap"][:8]) or "none"))
+        outside = windows["gap_outside_six"]
+        if windows["gap_all_multiples_of_six"]:
+            sixes_note = ("every one a multiple of six, no counterexample to "
+                          f"{windows['max_divisor']}")
+        else:
+            sixes_note = (f"{len(outside)} of them "
+                          f"{'is' if len(outside) == 1 else 'are'} no multiple "
+                          f"of six, first {outside[0]}")
         print(line("  gap all sixes",
                    "yes" if windows["gap_all_multiples_of_six"] else "no",
-                   "every one a multiple of six, no counterexample to "
-                   f"{windows['max_divisor']}"
-                   if windows["gap_all_multiples_of_six"] else
-                   "the gap is not the even divisors alone"))
+                   sixes_note))
         print(line("cofactor two",
                    f"{len(twos['decided'])} of {twos['divisors_read']}",
                    "decided by the half-mass comparison, no grid built"))

@@ -1325,18 +1325,29 @@ carrier-law: U(T) read by the divisor, and the divisors no grid carries
 Measured to `600`: `45` gaps of `599` divisors, all of them multiples of six,
 `0` empty windows, widest window `[1, 365]` at `599`. To `3000`: `245` of `2999`
 (`8.2` per cent), first six gaps `30, 42, 60, 66, 78, 102`, again every gap a
-multiple of six and no window empty, widest `[1, 1824]` at `2999`, in `18 s`.
+multiple of six and no window empty, widest `[1, 1824]` at `2999`, in `18 s`. To
+`10000`: `823` of `9999`, first two outside the multiples of six `3465` and
+`4095`, largest least-cofactor `6` at the witness `4620`, in `47 min`.
 
 Two consequences, and they point in opposite directions.
 
 * The window cannot replace the search, so `carrier_cofactors` keeps calling
   `carriers`: a period census that trusted the window alone would hold `245`
   divisors that no period holds.
-* The gap is not the evens alone but the **multiples of six**, at every horizon
-  measured, with no counterexample. That is a census claim and not a theorem, and
-  it is stated with its horizon because it has one: `tests/test_carrier_gap.py`
-  pins it to `600` and would report the first counterexample rather than defend
-  the pattern.
+* The gap is not the evens alone but the **multiples of six** -- up to a horizon,
+  and the horizon has been passed. To `3000` every one of the `245` gaps is a
+  multiple of six; read to `10000` the gap has `823` divisors and **two of them
+  are not**: `3465` and `4095`, both `3` modulo `6`. The witness is a magnitude
+  and not a residue: `1155 = 3 * 5 * 7 * 11` has the same shape at a third of the
+  size and is carried at cofactor `4`, while `3465 = 3 * 1155` sits in
+  `[2, 2106]` where no cofactor carries it. So the multiples of six are where the
+  gap *starts*, not where it ends, and what closes a hole is a small cofactor
+  that fits the window -- not parity, which never changes. `tests/test_carrier_gap.py`
+  pins the counterexample by the two functions that decide it (about `1.5 s`)
+  and the census at `600` as still-all-sixes. The census at `3500`, which has to
+  *report* it, reads every divisor to `3500` and costs tens of seconds (the same
+  command measured `31 s` and `75 s` on a machine with other work on it), so it
+  runs behind `EXACT_LATTICE_SLOW=1` and not in the default suite.
 
 The `largest cofactor` line is a horizon fact too, and its own staircase keeps
 climbing: the least cofactor a carried divisor needs is `1, 2, 3, 4, 5, 6` at
@@ -1962,8 +1973,8 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 491 tests
-exact-lattice-quantiles --self-test           # 132 checks, RC 0
+python -m unittest discover -s tests -t .     # 494 tests
+exact-lattice-quantiles --self-test           # 133 checks, RC 0
 exact-lattice-quantiles median-oracle --max-period 6000    # 0 splits, RC 0
 exact-lattice-quantiles carrier-law --max-divisor 3000     # 245 gaps of 2999, RC 0
 ```

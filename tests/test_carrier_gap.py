@@ -15,7 +15,8 @@ Three things are pinned here.
   the emptiness count cannot be the evidence that necessity is doing work.
 * The gap -- nonempty window, no cofactor in it carries -- is not empty either:
   ``45`` divisors to ``600``, beginning ``30``, and every one of them is a
-  multiple of six at that horizon.
+  multiple of six at that horizon -- and the horizon ends, which the last class
+  here pins to one witness instead of to a sweep.
 * A reader that trusts the window names the gap as carried, which is the
   mutant: the census counts the disagreement and the first one is ``30``.
 """
@@ -24,6 +25,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import unittest
 from contextlib import redirect_stdout
 
@@ -106,6 +108,45 @@ class TestTheMutantIsTheBackwardsReading(unittest.TestCase):
         verdict = carrier_window_census(HORIZON)["verdict"]
         self.assertIn("necessary and not sufficient", verdict)
         self.assertIn("multiple of six", verdict)
+
+
+class TestTheSixesClaimHasAHorizonAndItWasPassed(unittest.TestCase):
+    """``every gap is a multiple of six`` is a horizon claim, and it is false.
+
+    To ``3000`` the claim holds with no counterexample, which is exactly how a
+    horizon claim traps a reader: it is true everywhere it was measured and
+    false at ``3465``, where it was not.  The sweep to ``10000`` that found the
+    witness took ``47 min`` -- ``carrier_window_census(10000)``, ``823`` gaps,
+    two outside the sixes -- so the census here is the cheap one and the
+    counterexample is pinned by the two functions that decide it, which cost
+    about ``1.5 s`` for that single divisor.  The census that has to *report*
+    the witness reads every divisor to ``3500`` and is behind
+    ``EXACT_LATTICE_SLOW`` instead of in the default suite.
+    """
+
+    def test_the_first_gap_outside_the_multiples_of_six_is_3465(self):
+        a = 3465
+        self.assertEqual(a % 6, 3)
+        self.assertEqual(carrier_cofactor_window(a), (2, 2106))
+        self.assertEqual(carrier_cofactors(a), ())
+        # 1155 = 3 * 5 * 7 * 11 is the same shape at a third of the size and it
+        # is carried, so the witness is a magnitude and not a residue.
+        self.assertEqual(carrier_cofactors(1155), (4,))
+
+    def test_the_field_is_the_gap_filtered_by_six_and_not_a_second_census(self):
+        census = carrier_window_census(HORIZON)
+        self.assertEqual(census["gap_outside_six"],
+                         tuple(a for a in census["gap"] if a % 6))
+        self.assertEqual(census["gap_outside_six"], ())
+        self.assertTrue(census["gap_all_multiples_of_six"])
+
+    @unittest.skipUnless(os.environ.get("EXACT_LATTICE_SLOW"),
+                         "reads every divisor to 3500: tens of seconds")
+    def test_and_the_census_at_3500_reports_it_rather_than_absorbing_it(self):
+        census = carrier_window_census(3500)
+        self.assertEqual(census["gap_outside_six"], (3465,))
+        self.assertFalse(census["gap_all_multiples_of_six"])
+        self.assertNotIn(3465, census["gap"][:8])
 
 
 class TestTheCliCarriesTheCensus(unittest.TestCase):
