@@ -56,7 +56,16 @@ from functools import lru_cache
 from itertools import combinations, product
 from math import gcd, isqrt, lcm
 
-from .arithmetic import divisors, mass, prime_factorization, primes_of, totient_sum
+from .arithmetic import (
+    divisors,
+    euler_phi,
+    lower_half_mass,
+    mass,
+    odd_part,
+    prime_factorization,
+    primes_of,
+    totient_sum,
+)
 from .lattice import carriers, cell_widths, grids, mask_table, universe
 
 _INF = 10**9
@@ -1247,6 +1256,153 @@ def carrier_cofactor_window(a: int) -> tuple[int, int]:
     return max(1, floor), (2 * totient_sum(a)) // a
 
 
+def _two_cofactor_mass(a: int) -> int:
+    """The mass ``2a`` adds below ``a`` that ``a`` already did not have.
+
+    Every divisor of ``a`` lies below ``a`` and divides ``2a``, so it is counted
+    by both grids; what separates them is the divisors of ``2a`` that do not
+    divide ``a`` and still fall below ``a``.  Since ``a`` divides ``2a``, those
+    are exactly the divisors of ``2a`` whose two-adic valuation exceeds the one
+    of ``a``: for even ``a = 2**s m`` they are ``2**(s+1) e`` with ``e | m`` and
+    ``2e < m``, and the sum is ``2**s`` times a totient sum over ``m`` alone.  For
+    odd ``a`` they are the doubled divisors ``2e`` with ``e | a`` and ``2e < a``,
+    and ``e = 1`` contributes ``mass(2) = 2`` rather than ``phi(2) = 1``.
+    """
+    if a % 2 == 0:
+        m = odd_part(a)
+        shift = (a // m).bit_length() - 1
+        return (1 << shift) * lower_half_mass(m)
+    return 2 + sum(euler_phi(e) for e in divisors(a)
+                   if e >= 2 and 2 * e < a)
+
+
+def carrier_two_law(a: int) -> bool:
+    """``a in carriers(2 * a)``, decided by arithmetic on ``a`` alone.
+
+    The doubled grid is the one cofactor where the median condition collapses
+    to a **single** inequality.  ``a`` is a carrier of ``M`` when the mass of
+    the divisors below ``a`` reaches at most ``M / 2`` and the mass up to and
+    including ``a`` reaches at least it.  The lower side is a sum of divisors of
+    ``a`` plus :func:`_two_cofactor_mass`, and at ``M = 2a`` it reads
+    ``(a - mass(a)) + added <= a``.  The upper side is ``a + added >= a``, which
+    is not an inequality at all.  **So at cofactor two the two-sided median test
+    is the one-sided test ``added <= mass(a)``**, and no other cofactor has that
+    property -- at ``q = 3`` the upper side still binds and the law would need
+    both halves.
+
+    Written out, the even case is a *half-mass comparison*: with ``a = 2**s m``
+    and ``m`` odd, ``added = 2**s (m - U(m))`` and ``mass(a) = 2**(s-1) phi(m)``,
+    so the two sides divide by ``2**(s-1)`` and what is left mentions the odd
+    part only,
+
+        ``2 * upper_half_mass(m) >= 2m - phi(m)``.
+
+    The upper half of the odd part's mass must be at least ``m`` minus half its
+    totient.  Equality is allowed and is the tie: it is the ``m = 9`` case,
+    ``a = 18``, ``M = 36``, the grid where the middle lands exactly on a divisor
+    and where the first reading of this law, written strict, lost ``18``.
+
+    The odd case keeps ``a`` itself in the sum, because ``2`` does not divide an
+    odd ``a`` and the extra seat of :func:`mass` lands on ``2a`` instead of on
+    ``a`` -- that is the ``+ 2`` and the ``- 1`` in
+    :func:`_two_cofactor_mass`.
+
+    Measured against ``carriers(2 * a)`` for every ``a`` to ``3000``: no
+    disagreement, and the sweep is the referee in :func:`carrier_two_census`.
+    """
+    if a < 2:
+        raise ValueError(f"a carrier is at least two, got {a}")
+    base = a - euler_phi(a) if a % 2 == 0 else a - 1 - euler_phi(a)
+    return base + _two_cofactor_mass(a) <= a
+
+
+def carrier_two_census(max_divisor: int = 3000) -> dict:
+    """Cofactor two read by the law and by the grids, divisor by divisor.
+
+    :func:`carrier_two_law` is arithmetic on ``a``; the referee is
+    ``a in carriers(2 * a)``, which is the definition itself and shares no step
+    with the law.  Neither is allowed to certify itself, so every divisor to
+    ``max_divisor`` is read both ways and a disagreement is the law failing and
+    not the census.
+
+    What the law is worth is what it decides, not how fast it decides it: it
+    turns cofactor two from a grid construction into a comparison on ``a``, and
+    that is the only thing it buys.  It does **not** buy time -- the shortcut
+    built on it was measured slower than the grid and removed, see
+    :func:`_least_carrier_cofactor` -- and the census can read both ways only
+    because the referee itself is cheap.  Measured to
+    ``3000`` it says yes for ``2493`` of the ``2999`` divisors and no for the
+    other ``506`` -- the **two-gap**, beginning ``30, 42, 60, 66, 78, 84, 90,
+    102, 105, 114``.  Eleven of the ``2493`` are powers of two, which cofactor
+    one already carries, so cofactor two is the *smallest* cofactor of ``2482``
+    divisors of the ``2754`` that some cofactor carries.  Of the ``506``,
+    ``245`` are the gap of
+    :func:`carrier_window_census` and ``261`` are carried later, by three in
+    ``184`` cases, four in ``73`` and five in ``4``.  So the gap is a subset of
+    the two-gap and the two-gap is **not** the gap: ``105`` fails cofactor two
+    and is carried by four, and ``28`` odd multiples of three fail cofactor two
+    over this horizon.
+
+    Splitting the decision by residue is what makes the shape plain, and it is
+    why the gap is the hard question: cofactor two settles **every** divisor
+    coprime to six -- ``999`` of ``999`` -- so the residue class where the small
+    cofactors are absorbed is the only one that can hold a gap, and it holds
+    ``245`` of the ``500`` multiples of six.
+
+    The family ``6p`` for prime ``p`` is a two-gap by derivation and not by
+    measurement: ``6p`` has odd part ``m = 3p``, whose upper half is
+    ``phi(3p) = 2(p - 1)`` because ``3p`` is the only divisor at or above half
+    of ``3p``, and ``2(p - 1) < 2p + 1 = 3p - (p - 1)`` for every ``p >= 5``.
+    **No prime above three survives cofactor two**, and of the ``93`` such
+    primes below ``500`` none survives any cofactor at all.
+    """
+    if max_divisor < 2:
+        raise ValueError(f"a divisor is at least two, got {max_divisor}")
+    decided: list[int] = []
+    two_gap: list[int] = []
+    disagreements: list[int] = []
+    residues: dict[int, int] = {}
+    residues_all: dict[int, int] = {}
+    for a in range(2, max_divisor + 1):
+        law = carrier_two_law(a)
+        if law != (a in carriers(2 * a)):
+            disagreements.append(a)
+        residues_all[a % 6] = residues_all.get(a % 6, 0) + 1
+        if law:
+            decided.append(a)
+            residues[a % 6] = residues.get(a % 6, 0) + 1
+        else:
+            two_gap.append(a)
+    coprime = sum(1 for a in range(2, max_divisor + 1) if a % 6 in (1, 5))
+    coprime_two = residues.get(1, 0) + residues.get(5, 0)
+    two_gap_sixes = sum(1 for a in two_gap if a % 6 == 0)
+    if disagreements:
+        verdict = (f"the law and the grids disagree at {disagreements[:5]}, so "
+                   f"the half-mass comparison is not the carrier test and "
+                   f"cofactor two stays a search")
+    else:
+        verdict = (f"the half-mass comparison decides cofactor two for "
+                   f"{len(decided)} of the {max_divisor - 1} divisors to "
+                   f"{max_divisor} with no disagreement against the grids, "
+                   f"settles every one of the {coprime} divisors coprime to six "
+                   f"({coprime_two} of them), and fails exactly on "
+                   f"{len(two_gap)} divisors, {two_gap_sixes} of them multiples "
+                   f"of six: the gap is a subset of the two-gap and the "
+                   f"two-gap is not the gap")
+    return {
+        "max_divisor": max_divisor,
+        "divisors_read": max_divisor - 1,
+        "decided": tuple(decided),
+        "two_gap": tuple(two_gap),
+        "disagreements": tuple(disagreements),
+        "residues_decided": residues,
+        "residues_read": residues_all,
+        "coprime_to_six": coprime,
+        "coprime_to_six_decided": coprime_two,
+        "verdict": verdict,
+    }
+
+
 def carrier_cofactors(a: int, limit: int | None = None) -> tuple[int, ...]:
     """Every ``q`` for which ``a`` carries the grid ``q * a``.
 
@@ -1305,6 +1461,14 @@ def _least_carrier_cofactor(a: int) -> int | None:
     of ``4620`` is ``(6,)`` inside ``[2, 2808]``).  A horizon that stops short
     of ``4620`` sees ``5`` and no more; this function is the read that does not
     stop, so it is the one that notices.
+
+    Cofactor two is not short-circuited by :func:`carrier_two_law`.  It was, and
+    the shortcut was **slower**: over every ``a`` to ``3000`` it removed ``2482``
+    of ``231 109`` grid constructions -- ``1.07`` per cent -- because the first
+    candidate is already the cheapest one, and a grid of ``2a`` costs
+    microseconds.  The law's worth is that it is a comparison and not a search,
+    not that it is faster; the census that runs in this package is the referee
+    that keeps it honest, and a referee you skip is not a referee.
     """
     if a < 2:
         raise ValueError(f"a carrier is at least two, got {a}")

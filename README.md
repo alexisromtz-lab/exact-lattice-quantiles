@@ -1317,12 +1317,9 @@ carrier-law: U(T) read by the divisor, and the divisors no grid carries
   window empty            never           sum(phi(d) for d | a) = a keeps q = 2 inside every window
   in window, uncarried    45              30, 42, 60, 66, 78, 102, 114, 120
     gap all sixes         yes             every one a multiple of six, no counterexample to 600
-  widest window           599             [1, 365] is 364 cofactors wide
+  cofactor two            512 of 599      decided by the half-mass comparison, no grid built
+    two-gap               87              30, 42, 60, 66, 78, 84, 90, 102
   ...
-  verdict  the window is necessary and not sufficient: 45 of the 599 divisors
-           to 600 sit in a nonempty window that carries them nowhere, first 30,
-           and every one of them is a multiple of six, so no bound read off a
-           alone decides membership
 ```
 
 Measured to `600`: `45` gaps of `599` divisors, all of them multiples of six,
@@ -1347,6 +1344,100 @@ climbing: the least cofactor a carried divisor needs is `1, 2, 3, 4, 5, 6` at
 would be wrong at `1848` and the one that read `5` to `3000` would be wrong at
 `4620`. No cofactor bound is assumed anywhere: `_least_carrier_cofactor` walks
 the window until it finds the hit or reaches the end of it.
+
+#### Cofactor two is the one cofactor a theorem decides
+
+The median test has two sides: `a` must clear the middle of the grid `q * a` from
+below **and** from above. At `q = 2` the upper side reads `a + X >= a` for a mass
+`X` that is never negative, so it is trivially true and **the condition collapses
+to a single inequality**. No other cofactor has that property -- at `q = 3` both
+sides bind -- which is why cofactor two and only cofactor two can be decided
+without building a grid.
+
+What the inequality says depends on the parity of `a`. Write `mass(a)` for the
+totient sum over the proper divisors of `a`, `T = M / 2` for the middle seat, and
+`A` for the accumulated mass of the grid's divisors below `a`. Then `a` is a
+carrier of `2a` exactly when the seats at `a` and above reach `T`:
+
+```
+a even, a = 2^s * m with m odd:   X = 2^s * (m - U(m))     is the extra mass
+a odd:                           X = 2 + sum(phi(e))        for e | a, e >= 2, 2e < a
+```
+
+where `U(n) = sum(phi(d) for d | n, 2d >= n)` is the mass of `n` in its upper
+half. For even `a` the law is then exactly one comparison on the odd part of `a`,
+
+```
+a is a carrier of 2a   <=>   2 * U(m) >= 2 * m - phi(m)
+```
+
+a **half-mass comparison** -- no grid, no accumulation, no search. For odd `a` the
+right-hand side loses one seat (`phi(2) = 1` where `mass(2) = 2`) and `X` gains
+two, giving `E_2 <= phi(a) + 1` with `E_2` the upper-half mass of the odd divisors
+of `a` above `2`.
+
+```
+$ exact-lattice-quantiles carrier-law --max-period 600 --max-divisor 600
+carrier-law: U(T) read by the divisor, and the divisors no grid carries
+  periods read twice      300             every even period to 600
+  splits                  0               none, the two routes agree
+  carriers measured       554             divisors to 600 that some even grid carries, by window and not by limit
+  largest cofactor        4               no carried divisor to this horizon needs more
+  no grid carries         45              30, 42, 60, 66, 78, 102, 114, 120
+  window empty            never           sum(phi(d) for d | a) = a keeps q = 2 inside every window
+  in window, uncarried    45              30, 42, 60, 66, 78, 102, 114, 120
+    gap all sixes         yes             every one a multiple of six, no counterexample to 600
+  cofactor two            512 of 599      decided by the half-mass comparison, no grid built
+    two-gap               87              30, 42, 60, 66, 78, 84, 90, 102
+    coprime to six        199 of 199      cofactor two settles every divisor coprime to six
+  widest window           599             [1, 365] is 364 cofactors wide
+  cross-check             12000           grids read to this cofactor, against the window
+    window short at       nowhere         the theorem holds
+    limit short at        nowhere         the grids reached every one
+  verdict  the divisors and the grids name the same universe on all 300 even periods to 600
+  verdict  the window and the grids name the same 45 uncarried divisors to 600, and the law needs no limit to do it
+  verdict  the window is necessary and not sufficient: 45 of the 599 divisors to 600 sit in a nonempty window that carries them nowhere, first 30, and every one of them is a multiple of six, so no bound read off a alone decides membership
+  verdict  the half-mass comparison decides cofactor two for 512 of the 599 divisors to 600 with no disagreement against the grids, settles every one of the 199 divisors coprime to six (199 of them), and fails exactly on 87 divisors, 80 of them multiples of six: the gap is a subset of the two-gap and the two-gap is not the gap
+```
+
+Four things the census says, and one it refuses to say.
+
+- **Every divisor coprime to six is settled at two.** `999` of `999` to `3000`,
+  `199` of `199` to `600`. That is the reason the gap is all sixes: a divisor with
+  no factor `2` or no factor `3` never even reaches the cofactor that would need a
+  theorem, because cofactor two already carries it.
+- **Equality is a hit, so the test is not a search with a margin.** The tie
+  `2 U(m) = 2m - phi(m)` holds at `m = 9`, that is at `a = 18` on the grid `36`,
+  and `18` is a carrier there. It holds for `20` divisors to `600` and `33` to
+  `3000`, starting at `6`, so a strict reading -- the natural reading, since a
+  median usually is a value and not a pair -- loses all of them. That is the
+  mutant `tests/test_carrier_two_law.py` pins.
+- **The family `6p` never passes, and by hand.** For a prime `p >= 5` the odd part
+  is `3p`, and `U(3p) = phi(3p) = 2(p - 1)` while the base demands
+  `3p - (p - 1) = 2p + 1`. Since `2(p - 1) < 2p + 1` for every `p`, no `6p` is a
+  carrier of `12p`: the first `93` primes give `93` two-gaps, `0` exceptions. What
+  is *not* proved is that they are gaps -- cofactor three, four and five also
+  fail for each of them, measured, but the general `q` case has no theorem yet,
+  and the window reaches out to `q ~ 3.6 p` where the added mass depends on the
+  factorization of `q` itself.
+- **A two-gap is not a gap, and the census keeps them apart.** `87` divisors to
+  `600` fail cofactor two while some even grid carries them: `184` of the `261`
+  to `3000` are carried at three, `73` at four, `4` at five. `105` is the first
+  odd one -- it fails at two and the grid `420` carries it. The gap (`45` to
+  `600`) is a strict subset of the two-gap (`87`), and conflating them would read
+  `42` carried divisors as lost.
+- **And it does not claim to be a speedup, because it was measured not to be.**
+  The first reading of the law as a fast path reported a `218x` saving; a cold
+  process said the fast path was *slower*, `52.5 s` against `37.8 s`, because the
+  "fast" loop had run second over warm caches. Counting calls instead of timing
+  them settles it: `228 627` grid constructions against `231 109`, so the law
+  replaces **`2482` of `231 109`** -- `1.07` per cent -- while a call to
+  `carrier_two_law(83160)` costs `674 us` against `2-5 us` for `83160 in
+  carriers(166320)`. The path was removed and `_least_carrier_cofactor` keeps
+  calling `carriers`. **The claim is epistemic, not algorithmic:** a second reader
+  with the same argument is not a second reader, and only a proof closes the
+  blind spot -- but a proof that saves one per cent of the work still has to be
+  cheaper than the work it saves, and this one is not.
 
 #### The fee of a block is not a search: it is half its defect
 
@@ -1871,8 +1962,8 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 479 tests
-exact-lattice-quantiles --self-test           # 127 checks, RC 0
+python -m unittest discover -s tests -t .     # 491 tests
+exact-lattice-quantiles --self-test           # 132 checks, RC 0
 exact-lattice-quantiles median-oracle --max-period 6000    # 0 splits, RC 0
 exact-lattice-quantiles carrier-law --max-divisor 3000     # 245 gaps of 2999, RC 0
 ```
