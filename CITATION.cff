@@ -51,14 +51,14 @@ version: 0.26.0
 date-released: "2026-11-27"
 identifiers:
   - type: swh
-    value: "swh:1:rev:352285f281bf3568576f77596aed69029cb574e7"
+    value: "swh:1:rev:2eddead349935f9f478959cabf35e2801e4e7d89"
     description: >-
-      Archival revision of v0.25.0 in Software Heritage, verified against the
+      Archival revision of v0.26.0 in Software Heritage, verified against the
       archive's revision API on 2026-11-27.
   - type: swh
-    value: "swh:1:dir:29fce090a0eea868541ea517bab119ee265dc8fa"
+    value: "swh:1:dir:dacb487a3f69a825d38395541cf12b4ffb29a74f"
     description: >-
       The source directory of that revision, resolved by the archive from the
       revision above.
   - type: url
-    value: "https://archive.softwareheritage.org/swh:1:dir:29fce090a0eea868541ea517bab119ee265dc8fa"
+    value: "https://archive.softwareheritage.org/swh:1:dir:dacb487a3f69a825d38395541cf12b4ffb29a74f"
