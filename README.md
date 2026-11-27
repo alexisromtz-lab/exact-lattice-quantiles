@@ -1964,13 +1964,13 @@ never consults the seat map, so the two readings cannot quietly converge again.
 
 See `CITATION.cff`. Author ORCID: [0009-0001-9116-075X](https://orcid.org/0009-0001-9116-075X).
 
-Version 0.24.1 is archived in Software Heritage, and the identifiers below are
+Version 0.25.0 is archived in Software Heritage, and the identifiers below are
 the archive's answer and not a string this repository composed:
 
-    swh:1:rev:5f4b72822bafe2b6cf6d91d8fc993fbf5c19da25
-    swh:1:dir:ebf16db28ad979ae733cff29bf57bca42712d0f2
+    swh:1:rev:352285f281bf3568576f77596aed69029cb574e7
+    swh:1:dir:29fce090a0eea868541ea517bab119ee265dc8fa
 
-The revision is the merge commit of `#30`; the directory is what the archive
+The revision is the merge commit of `#32`; the directory is what the archive
 resolved from it, and both the revision and the directory API answer `200`. They
 are quoted only after `/api/1/revision/<sha>/` returned them: an identifier that
 resolves is evidence, and one that does not is decoration. No DOI is published
