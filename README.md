@@ -2175,13 +2175,13 @@ never consults the seat map, so the two readings cannot quietly converge again.
 
 See `CITATION.cff`. Author ORCID: [0009-0001-9116-075X](https://orcid.org/0009-0001-9116-075X).
 
-Version 0.28.0 is archived in Software Heritage, and the identifiers below are
+Version 0.29.0 is archived in Software Heritage, and the identifiers below are
 the archive's answer and not a string this repository composed:
 
-    swh:1:rev:d82da5a204ad5032cec20a22eaf4913749d8ee3a
-    swh:1:dir:f082c26c720259e3e9b56f69471320faadb78504
+    swh:1:rev:2251d4e63c6e0867dd6a6b28cb446f7853dea0e8
+    swh:1:dir:3a42ad53f0c006d8f4d6f76cebad37f294f0598f
 
-The revision is the merge commit of `#38`; the directory is what the archive
+The revision is the merge commit of `#40`; the directory is what the archive
 resolved from it, and both the revision and the directory API answer `200`. They
 are quoted only after `/api/1/revision/<sha>/` returned them: an identifier that
 resolves is evidence, and one that does not is decoration. No DOI is published
