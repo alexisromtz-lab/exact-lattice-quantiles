@@ -1234,6 +1234,12 @@ def carrier_cofactor_window(a: int) -> tuple[int, int]:
     Necessity is proved; it is not a search bound.  Measured over every ``a``
     to ``3000`` and every ``q`` to ``300``, no cofactor outside its window ever
     carries, and the window reproduces the plain sweep cofactor for cofactor.
+
+    The window is **never empty**, and that is a theorem rather than a finding:
+    ``sum(phi(d) for d | a) == a`` puts the floor at most ``2`` and the ceiling
+    at least ``2``, so ``q = 2`` is in every window built here.  Nonemptiness
+    therefore says nothing about ``a``, which is why
+    :func:`carrier_window_census` measures the gap instead of the emptiness.
     """
     if a < 2:
         raise ValueError(f"a carrier is at least two, got {a}")
@@ -1562,6 +1568,85 @@ def carrier_image_census(max_divisor: int = 1000,
         "by_grids": by_grids,
         "missed_by_law": missed_by_law,
         "missed_by_grids": missed_by_grids,
+        "verdict": verdict,
+    }
+
+
+def carrier_window_census(max_divisor: int = 3000) -> dict:
+    """The window read against the grids: what necessity cannot decide.
+
+    :func:`carrier_cofactor_window` proves that a divisor is carried at some
+    cofactor *inside* its window or at none.  Read backwards that becomes "in
+    the window, therefore carried", and this is the census that refutes the
+    backwards reading divisor by divisor, with no grid limit anywhere.
+
+    The window is never empty -- ``sum(phi(d) for d | a) == a`` keeps ``q = 2``
+    in every one of them -- so the emptiness count is a theorem and carries no
+    information.  What carries information is the **gap**: the divisors whose
+    window is nonempty and none of whose cofactors in it carries them.
+
+    Measured to ``3000``, the gap has ``245`` divisors of ``2999`` -- ``8.2``
+    per cent -- beginning ``30, 42, 60, 66, 78, 102``, and every one of them is
+    a multiple of six, with no counterexample at that horizon.  ``30`` is the
+    smallest: ``carriers(30)`` is ``(15,)``, so the divisor ``15`` is carried by
+    ``30`` and ``30`` is carried by no even grid at all.
+
+    The gap is why :func:`carrier_cofactors` still calls :func:`carriers` -- the
+    window narrows the search and cannot replace it -- and why a period census
+    that trusted the window alone would hold ``245`` divisors no period holds.
+    """
+    if max_divisor < 2:
+        raise ValueError(f"a divisor is at least two, got {max_divisor}")
+    least: dict[int, int] = {}
+    gap: list[int] = []
+    empty: list[int] = []
+    no_two: list[int] = []
+    widest = {"a": None, "floor": 0, "ceiling": 0, "width": -1}
+    for a in range(2, max_divisor + 1):
+        floor, ceiling = carrier_cofactor_window(a)
+        if ceiling < floor:
+            empty.append(a)
+        elif not floor <= 2 <= ceiling:
+            no_two.append(a)
+        if ceiling - floor > widest["width"]:
+            widest = {"a": a, "floor": floor, "ceiling": ceiling,
+                      "width": ceiling - floor}
+        q = _least_carrier_cofactor(a)
+        if q is None:
+            gap.append(a)
+        else:
+            least[a] = q
+    top = max(least.values()) if least else None
+    witness = max(sorted(least), key=lambda a: least[a]) if least else None
+    divisible_by_six = not [a for a in gap if a % 6]
+    if gap and divisible_by_six:
+        verdict = (f"the window is necessary and not sufficient: {len(gap)} of "
+                   f"the {max_divisor - 1} divisors to {max_divisor} sit in a "
+                   f"nonempty window that carries them nowhere, first "
+                   f"{gap[0]}, and every one of them is a multiple of six, so "
+                   f"no bound read off a alone decides membership")
+    elif gap:
+        verdict = (f"the window is necessary and not sufficient: {len(gap)} of "
+                   f"the {max_divisor - 1} divisors to {max_divisor} sit in a "
+                   f"nonempty window that carries them nowhere, first "
+                   f"{gap[0]}, and {len(gap) - sum(a % 6 == 0 for a in gap)} "
+                   f"of them are no multiple of six, so the gap is not the "
+                   f"even divisors alone")
+    else:
+        verdict = (f"every divisor to {max_divisor} whose window is nonempty "
+                   f"is carried inside it, so nothing at this horizon separates "
+                   f"necessity from sufficiency")
+    return {
+        "max_divisor": max_divisor,
+        "divisors_read": max_divisor - 1,
+        "carried": len(least),
+        "gap": tuple(gap),
+        "empty_windows": tuple(empty),
+        "windows_without_two": tuple(no_two),
+        "gap_all_multiples_of_six": divisible_by_six if gap else None,
+        "largest_least_cofactor": top,
+        "largest_witness": witness,
+        "widest_window": widest,
         "verdict": verdict,
     }
 

@@ -47,7 +47,8 @@ from .pricing import (antichain_saving_ceiling, arity_ladder_census, band_slack,
                       carrier_block_of, carrier_block_saving,
                       carrier_cofactor_window, carrier_cofactors,
                       carrier_image, carrier_image_by_law,
-                      carrier_image_census, carrier_law_census, cofactor_block,
+                      carrier_image_census, carrier_law_census,
+                      carrier_window_census, cofactor_block,
                       crossing_scalars,
                       free_margin, free_margin_census, free_margin_cross,
                       excess_parity, exactness_frontier, extremal_census,
@@ -1444,6 +1445,13 @@ def _self_test() -> int:
                 if carrier_cofactors(a) != tuple(
                     q for q in range(1, 41)
                     if (q * a) % 2 == 0 and a in carriers(q * a))), ())
+    gaps = carrier_window_census(600)
+    check("and the window is never empty, because q = 2 is always inside it",
+          (gaps["empty_windows"], gaps["windows_without_two"]), ((), ()))
+    check("but a nonempty window is not a carrier: the gap begins at 30",
+          (gaps["gap"][0], gaps["gap_all_multiples_of_six"],
+           carrier_cofactor_window(30), carrier_cofactors(30)),
+          (30, True, (2, 18), ()))
     universes = reciprocal_filter_census(400)
     check("every period below one is clean in both universes, not just one",
           (universes["proved"], universes["proved_without_break"]),
@@ -1747,8 +1755,10 @@ def _print_carrier_law(max_period: int, max_divisor: int, as_json: bool,
     law = carrier_law_census(max_period)
     image = carrier_image_census(max_divisor) if cross_check else None
     by_law = image["by_law"] if image else carrier_image_by_law(max_divisor)
+    windows = carrier_window_census(max_divisor)
     if as_json:
-        payload = {"universe_law": law, "carrier_image": by_law}
+        payload = {"universe_law": law, "carrier_image": by_law,
+                   "cofactor_window": windows}
         if image:
             payload["cross_check"] = {k: image[k] for k in
                                       ("grid_limit", "missed_by_law",
@@ -1772,6 +1782,23 @@ def _print_carrier_law(max_period: int, max_divisor: int, as_json: bool,
                    "no carried divisor to this horizon needs more"))
         print(line("no grid carries", str(len(by_law["absent"])),
                    ", ".join(str(a) for a in by_law["absent"][:8]) or "none"))
+        print(line("window empty",
+                   str(len(windows["empty_windows"])) if
+                   windows["empty_windows"] else "never",
+                   "sum(phi(d) for d | a) = a keeps q = 2 inside every window"))
+        print(line("in window, uncarried", str(len(windows["gap"])),
+                   ", ".join(str(a) for a in windows["gap"][:8]) or "none"))
+        print(line("  gap all sixes",
+                   "yes" if windows["gap_all_multiples_of_six"] else "no",
+                   "every one a multiple of six, no counterexample to "
+                   f"{windows['max_divisor']}"
+                   if windows["gap_all_multiples_of_six"] else
+                   "the gap is not the even divisors alone"))
+        print(line("widest window",
+                   str(windows["widest_window"]["a"]),
+                   f"[{windows['widest_window']['floor']}, "
+                   f"{windows['widest_window']['ceiling']}] is "
+                   f"{windows['widest_window']['width']} cofactors wide"))
         if image:
             print(line("cross-check", str(image["grid_limit"]),
                        "grids read to this cofactor, against the window"))
@@ -1788,6 +1815,7 @@ def _print_carrier_law(max_period: int, max_divisor: int, as_json: bool,
                        "the grids reached every one"))
         print(f"  verdict  {law['verdict']}")
         print(f"  verdict  {image['verdict'] if image else by_law['verdict']}")
+        print(f"  verdict  {windows['verdict']}")
     for split in law["splits"]:
         print(f"SPLIT: period {split['period']} only by the grids "
               f"{split['only_by_grids']}, only by the law "
