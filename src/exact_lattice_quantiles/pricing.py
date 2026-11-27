@@ -1462,6 +1462,16 @@ def _least_carrier_cofactor(a: int) -> int | None:
     of ``4620`` sees ``5`` and no more; this function is the read that does not
     stop, so it is the one that notices.
 
+    The staircase is a **plateau** and not a spike, and that is the difference
+    between a witness and a law.  Over every divisor to ``200 000`` the top rung
+    is still ``6`` and ``63`` divisors sit on it -- ``4620`` is the first of a
+    population, not a lone accident -- and none to ``300 000`` reaches ``7``.
+    The rung is not a parity phenomenon either: ``15015 = 3 * 5 * 7 * 11 * 13``
+    is odd and is carried at ``6``.  So "the witness is ``4620``" is a horizon
+    fact and "no divisor reaches ``7``" is a bounded read; :func:`carrier_ladder`
+    is the function that lets the read say *which* of those it did, because a
+    horizon cannot tell a spike from a plateau.
+
     Cofactor two is not short-circuited by :func:`carrier_two_law`.  It was, and
     the shortcut was **slower**: over every ``a`` to ``3000`` it removed ``2482``
     of ``231 109`` grid constructions -- ``1.07`` per cent -- because the first
@@ -1825,6 +1835,83 @@ def carrier_window_census(max_divisor: int = 3000) -> dict:
         "largest_least_cofactor": top,
         "largest_witness": witness,
         "widest_window": widest,
+        "verdict": verdict,
+    }
+
+
+def carrier_ladder(max_divisor: int = 6000, ceiling: int = 10) -> dict:
+    """How far the least carrier cofactor climbs, read by a bounded probe.
+
+    :func:`_least_carrier_cofactor` answers *what carries this divisor* and
+    pays for that answer with a walk across the whole window -- up to ``0.6 a``
+    grids -- whenever the answer is "nothing", which is the case for one
+    divisor in twelve.  The census question is weaker and much cheaper: *does
+    anything reach rung q*.  A probe that stops at ``ceiling`` costs at most
+    ``ceiling`` grid reads per divisor, and the difference is what lets this
+    read reach ``300 000`` in under a minute of wall clock where the
+    full-window walk needed three quarters of an hour to reach ``10 000``.
+    Those two figures are measurements of a loaded shared machine and not
+    properties of the reader; the ratio between them is the part that repeats.
+
+    What the cheaper read returns is the staircase itself, with its
+    population: every rung, the first divisor that stands on it, and how many
+    divisors stand on it at this horizon.  A rung with one name on it is a
+    spike; a rung with sixty-three is a plateau, and only the population tells
+    them apart.  So this instrument exists to answer *is the top rung a bound
+    or a horizon* without paying for a sweep that reads the whole window.
+
+    ``unsettled`` is not ``gap``.  A divisor that no candidate up to
+    ``ceiling`` carries may still be carried above the ceiling, so the ladder
+    refuses to name it absent: :func:`carrier_window_census` decides that
+    question and this function does not.  The two agree where both are
+    entitled to answer -- when the top rung sits below ``ceiling``, every
+    divisor it leaves unsettled is a gap of the census, and a disagreement
+    there is this probe being wrong.
+    """
+    if max_divisor < 2:
+        raise ValueError(f"the ladder needs a divisor to read, got {max_divisor}")
+    if ceiling < 1:
+        raise ValueError(f"the ceiling is at least one, got {ceiling}")
+    population: dict[int, int] = {}
+    first: dict[int, int] = {}
+    unsettled: list[int] = []
+    for a in range(2, max_divisor + 1):
+        for q in range(1, ceiling + 1):
+            if a % 2 and q % 2:
+                continue        # an odd grid is in no universe
+            if a in carriers(q * a):
+                population[q] = population.get(q, 0) + 1
+                first.setdefault(q, a)
+                break
+        else:
+            unsettled.append(a)
+    top = max(population) if population else None
+    if top is None:
+        verdict = (f"no divisor to {max_divisor} is carried by a cofactor up to "
+                   f"{ceiling}, which says the read stopped and nothing else")
+    elif top >= ceiling:
+        verdict = (f"the ladder reaches its ceiling at {ceiling}, held by "
+                   f"{population[top]} divisors to {max_divisor}, first "
+                   f"{first[top]}; a rung at the ceiling proves the ceiling and "
+                   f"not the rung above it")
+    elif population[top] == 1:
+        verdict = (f"the least cofactor climbs to {top} and the top rung holds "
+                   f"one name to {max_divisor}, {first[top]}, so this horizon "
+                   f"cannot tell a spike from a plateau")
+    else:
+        verdict = (f"the least cofactor climbs to {top}, held by "
+                   f"{population[top]} divisors to {max_divisor} and not by "
+                   f"one, first {first[top]}, so the rung is a population and "
+                   f"not a single witness")
+    return {
+        "max_divisor": max_divisor,
+        "divisors_read": max_divisor - 1,
+        "ceiling": ceiling,
+        "rungs": tuple(sorted(first.items())),
+        "population": dict(sorted(population.items())),
+        "max_cofactor": top,
+        "max_witness": first[top] if top is not None else None,
+        "unsettled": tuple(unsettled),
         "verdict": verdict,
     }
 
