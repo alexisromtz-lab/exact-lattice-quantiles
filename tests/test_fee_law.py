@@ -31,6 +31,7 @@ from exact_lattice_quantiles import (arity_ladder_census, block_advantage,
                                      carrier_cofactors, carrier_image,
                                      carrier_image_by_law,
                                      carrier_image_census,
+                                     carrier_ladder,
                                      carrier_law_census,
                                      carrier_universe_by_law, carriers,
                                      cofactor_block, crossing_scalars,
@@ -43,7 +44,8 @@ from exact_lattice_quantiles import (arity_ladder_census, block_advantage,
 from exact_lattice_quantiles.cli import main
 from exact_lattice_quantiles.pricing import (_best_margin,
                                              _cofactors_below,
-                                             _least_carrier_cofactor)
+                                             _least_carrier_cofactor,
+                                             carrier_window_census)
 
 
 class TheFeeOfABlock(unittest.TestCase):
@@ -772,6 +774,62 @@ class TheCarrierWindow(unittest.TestCase):
         self.assertEqual(carrier_cofactors(4620), (6,))
         self.assertNotIn(4620, _cofactors_below(20000))
         self.assertIn(6, _cofactors_below(27720)[4620])
+
+    def test_the_ladder_reads_the_staircase_and_its_population_at_once(self):
+        """The top rung is a population and not a spike, and one read says both.
+
+        A staircase of witnesses cannot tell the two apart: a rung reached once
+        and a rung reached a hundred times print the same table.  The ladder
+        reads every divisor to the horizon, so it names the population, and at
+        ``6000`` rung ``6`` already holds two names -- ``4620`` is first and
+        not alone."""
+        rungs = carrier_ladder(6000)
+        self.assertEqual(rungs["rungs"],
+                         ((1, 2), (2, 3), (3, 84), (4, 90), (5, 1848),
+                          (6, 4620)))
+        self.assertEqual(rungs["max_cofactor"], 6)
+        self.assertEqual(rungs["max_witness"], 4620)
+        self.assertEqual(rungs["population"][6], 2)
+        self.assertEqual(_least_carrier_cofactor(5460), 6)
+        self.assertIn("population and not a single witness", rungs["verdict"])
+
+    def test_rung_six_is_not_a_parity_phenomenon(self):
+        """``15015`` stands on rung ``6`` and is odd.
+
+        An odd divisor is only ever carried at an even cofactor, so a rung read
+        off even divisors alone could be an artefact of parity.  It is not:
+        ``15015 = 3 * 5 * 7 * 11 * 13`` is carried by ``6 * 15015`` and by no
+        smaller grid, which is the same story as ``4620`` -- magnitude, not
+        residue."""
+        self.assertEqual(15015 % 2, 1)
+        self.assertEqual(_least_carrier_cofactor(15015), 6)
+        floor, ceiling = carrier_cofactor_window(15015)
+        self.assertLessEqual(floor, 6)
+        self.assertLessEqual(6, ceiling)
+
+    def test_an_unsettled_divisor_is_the_ceiling_and_not_an_absence(self):
+        """The ladder stops at its ceiling, so ``unsettled`` cannot mean absent.
+
+        ``1848`` is carried first at cofactor ``5``.  Read with a ceiling of
+        ``4`` the ladder has to leave it unsettled, and it does -- which is why
+        the word is not ``gap``: the census is the reader entitled to call a
+        divisor absent, and it needs the whole window to do it."""
+        short = carrier_ladder(1900, ceiling=4)
+        self.assertIn(1848, short["unsettled"])
+        self.assertEqual(_least_carrier_cofactor(1848), 5)
+
+    def test_the_ladder_and_the_census_name_the_same_absences(self):
+        """Two readers, two routes, and both are entitled to answer here.
+
+        To ``600`` the top rung is ``4``, below the ladder's ceiling, so every
+        divisor it leaves unsettled is a divisor the census calls a gap -- and
+        the sets are equal, not merely nested.  A disagreement is one of the
+        two reads being wrong, which is ``RC 1`` in ``carrier-law``."""
+        ladder = carrier_ladder(600)
+        census = carrier_window_census(600)
+        self.assertLess(ladder["max_cofactor"], ladder["ceiling"])
+        self.assertEqual(set(ladder["unsettled"]), set(census["gap"]))
+        self.assertEqual(len(census["gap"]), 45)
 
     def test_a_short_grid_limit_is_reported_as_the_measurement_short(self):
         """And the other direction: a law-correct set against grids read only

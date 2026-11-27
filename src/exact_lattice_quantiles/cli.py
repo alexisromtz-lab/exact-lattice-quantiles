@@ -47,7 +47,8 @@ from .pricing import (antichain_saving_ceiling, arity_ladder_census, band_slack,
                       carrier_block_of, carrier_block_saving,
                       carrier_cofactor_window, carrier_cofactors,
                       carrier_image, carrier_image_by_law,
-                      carrier_image_census, carrier_law_census,
+                      carrier_image_census, carrier_ladder,
+                      carrier_law_census,
                       carrier_two_census, carrier_two_law,
                       carrier_window_census, cofactor_block,
                       crossing_scalars,
@@ -1469,6 +1470,17 @@ def _self_test() -> int:
     check("and the sixes are a horizon, not a law: 3465 is no multiple of six",
           (3465 % 6, carrier_cofactor_window(3465), carrier_cofactors(3465)),
           (3, (2, 2106), ()))
+    rungs = carrier_ladder(3000)
+    check("the least cofactor climbs 1, 2, 3, 4 and 5 to three thousand",
+          rungs["rungs"], ((1, 2), (2, 3), (3, 84), (4, 90), (5, 1848)))
+    check("and the rung it stops on holds four names and not one",
+          (rungs["population"][5], rungs["max_witness"]), (4, 1848))
+    short = carrier_ladder(600)
+    check("the ladder leaves unsettled what the census calls absent",
+          (short["max_cofactor"] < short["ceiling"],
+           tuple(a for a in short["unsettled"]
+                 if a not in set(carrier_window_census(600)["gap"]))),
+          (True, ()))
     check("the two halves of a totient sum are the number itself",
           [n for n in range(1, 601)
            if upper_half_mass(n) + lower_half_mass(n) != n], [])
@@ -1777,9 +1789,11 @@ def _print_carrier_law(max_period: int, max_divisor: int, as_json: bool,
     by_law = image["by_law"] if image else carrier_image_by_law(max_divisor)
     windows = carrier_window_census(max_divisor)
     twos = carrier_two_census(max_divisor)
+    rungs = carrier_ladder(max_divisor)
     if as_json:
         payload = {"universe_law": law, "carrier_image": by_law,
-                   "cofactor_window": windows, "cofactor_two": twos}
+                   "cofactor_window": windows, "cofactor_two": twos,
+                   "least_ladder": rungs}
         if image:
             payload["cross_check"] = {k: image[k] for k in
                                       ("grid_limit", "missed_by_law",
@@ -1820,6 +1834,21 @@ def _print_carrier_law(max_period: int, max_divisor: int, as_json: bool,
         print(line("  gap all sixes",
                    "yes" if windows["gap_all_multiples_of_six"] else "no",
                    sixes_note))
+        ladder_top = rungs["max_cofactor"]
+        if ladder_top is None:
+            print(line("least ladder", "none",
+                       f"no cofactor up to {rungs['ceiling']} carries a "
+                       f"divisor to {rungs['max_divisor']}"))
+        else:
+            on_top = rungs["population"][ladder_top]
+            print(line("least ladder", f"1..{ladder_top}",
+                       f"the top rung holds {on_top} "
+                       f"{'divisor' if on_top == 1 else 'divisors'} to "
+                       f"{rungs['max_divisor']}, first "
+                       f"{rungs['max_witness']}"))
+        print(line("  unsettled", str(len(rungs["unsettled"])),
+                   f"no cofactor <= {rungs['ceiling']} carries them, and that "
+                   f"is a ceiling of the read: the line above decides absences"))
         print(line("cofactor two",
                    f"{len(twos['decided'])} of {twos['divisors_read']}",
                    "decided by the half-mass comparison, no grid built"))
@@ -1852,6 +1881,7 @@ def _print_carrier_law(max_period: int, max_divisor: int, as_json: bool,
         print(f"  verdict  {image['verdict'] if image else by_law['verdict']}")
         print(f"  verdict  {windows['verdict']}")
         print(f"  verdict  {twos['verdict']}")
+        print(f"  verdict  {rungs['verdict']}")
     for split in law["splits"]:
         print(f"SPLIT: period {split['period']} only by the grids "
               f"{split['only_by_grids']}, only by the law "
@@ -1867,6 +1897,20 @@ def _print_carrier_law(max_period: int, max_divisor: int, as_json: bool,
         print(f"SPLIT: the cofactor window is short at "
               f"{list(image['missed_by_law'][:5])}, which the grids carry and "
               f"the window does not", file=sys.stderr)
+        return RC_ABOVE_CEILING
+    top = rungs["max_cofactor"]
+    if (top is not None and top < rungs["ceiling"]
+            and top != by_law["max_cofactor"]):
+        print(f"SPLIT: the bounded probe stops at rung {top} where the full "
+              f"window names {by_law['max_cofactor']}, and a probe that ran to "
+              f"the end of its range has no limit to blame", file=sys.stderr)
+        return RC_ABOVE_CEILING
+    carried_but_called_gap = tuple(a for a in windows["gap"]
+                                   if a not in set(rungs["unsettled"]))
+    if carried_but_called_gap:
+        print(f"SPLIT: the census calls {list(carried_but_called_gap[:5])} "
+              f"gaps that the probe carries, so one of the two reads is wrong",
+              file=sys.stderr)
         return RC_ABOVE_CEILING
     if law["periods_measured"] == 0:
         print(f"NO_MEDIDO: no even period up to {max_period}", file=sys.stderr)

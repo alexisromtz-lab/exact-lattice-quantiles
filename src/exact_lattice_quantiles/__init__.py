@@ -57,6 +57,7 @@ from .pricing import (PriceFormCensus, antichain_saving_ceiling,
                       carrier_block_saving, carrier_cofactor_window,
                       carrier_cofactors, carrier_image, carrier_image_by_law,
                       carrier_image_census,
+                      carrier_ladder,
                       carrier_law_census, carrier_universe_by_law,
                       in_carrier_universe,
                       cofactor_block, crossing_scalars, exactness_frontier,
@@ -78,7 +79,7 @@ from .solve import (OK, PROBES_INSUFFICIENT, UNDERCOVERED,
                     InfeasibleWithinBudget, Schedule, ladder,
                     solve_lattice_schedule)
 
-__version__ = "0.28.0"
+__version__ = "0.29.0"
 
 __all__ = [
     "Ceiling",
@@ -101,6 +102,7 @@ __all__ = [
     "carrier_universe_by_law",
     "in_carrier_universe",
     "carrier_law_census",
+    "carrier_ladder",
     "carrier_cofactor_window",
     "carrier_image",
     "carrier_image_by_law",

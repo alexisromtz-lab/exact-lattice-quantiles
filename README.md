@@ -1168,15 +1168,55 @@ divisor that is the median of exactly *one* grid:
 | `a` | 2 | 6 | 84 | 90 | 1848 | 4620 |
 |---|---|---|---|---|---|---|
 | least witness | 1 | 2 | 3 | 4 | 5 | 6 |
+| divisors on that rung to `200000` | 17 | 163767 | 14096 | 5176 | 341 | 63 |
 
 `carrier_cofactors(4620)` is `(6,)` inside a window of `[2, 2808]`: one carrier
 grid, `27720`, and that grid is outside the table a `horizon = 20000` read ever
 builds. So the transcript above answers *how far the read went*, never *how far
-the object goes* -- which is why the line says "to this horizon". No even divisor
-below `4620` has witness `6`, and none below `300000` has `7`; the staircase is
-measured, and a measurement is exactly what a bound is not. The proof of the
-window does not depend on it: the window is read off `a` alone and holds whether
-the witness is `2` or `6`.
+the object goes* -- which is why the line says "to this horizon".
+
+**The top rung is a plateau and not a spike, and that is the difference between
+a witness and a law.** `4620` is not a lone accident: `63` divisors to `200000`
+are carried at `6` and none of them at `7`, and no divisor to `300000` reaches
+`7` either. Nor is the rung a parity phenomenon -- `15015 = 3 * 5 * 7 * 11 * 13`
+is odd and is carried at `6` -- so it cannot be predicted from `2 | a` or `6 | a`
+alone. The read that shows this is one call, and it reports the population rather
+than the first name:
+
+```
+$ exact-lattice-quantiles carrier-law --max-divisor 6000
+  least ladder            1..6            the top rung holds 2 divisors to 6000, first 4620
+    unsettled             495             no cofactor <= 10 carries them, and that is a ceiling of the read: the line above decides absences
+  verdict  the least cofactor climbs to 6, held by 2 divisors to 6000 and not by one, first 4620, so the rung is a population and not a single witness
+$ exact-lattice-quantiles carrier-law --max-divisor 2000
+  verdict  the least cofactor climbs to 5 and the top rung holds one name to 2000, 1848, so this horizon cannot tell a spike from a plateau
+```
+
+The two verdicts are the point: a horizon that stops below the top rung is a
+bound and says so, and a horizon that sees more than one name on the rung is a
+population. What no horizon can do is call a population a theorem -- so the
+staircase stays a measurement, and the proof of the window does not depend on
+it: the window is read off `a` alone and holds whether the witness is `2` or
+`6`. To `200000` the rung holds `63` names and to `300000` it holds `108`, and
+rung `7` holds none -- one call each, and the call is the receipt:
+
+```
+$ python -c "from exact_lattice_quantiles import carrier_ladder as L; print(L(200000)['population'], L(300000)['population'])"
+{1: 17, 2: 163767, 3: 14096, 4: 5176, 5: 341, 6: 63} {1: 18, 2: 245601, 3: 21163, 4: 7755, 5: 531, 6: 108}
+```
+
+The probe is bounded by construction and not by luck. Asking *what carries* `a`
+costs a whole window walk when the answer is *nothing* -- `0.6 a` grid reads --
+which is why a blind sweep to `10000` takes tens of minutes. Asking *does any
+cofactor up to ten carry* `a` costs at most ten grid reads whether the answer is
+a number or an absence, and the census question is the one that was asked. A
+divisor the probe leaves `unsettled` is therefore **not** a gap: it is a read
+that stopped, and `carrier-law` keeps the two lines apart and cross-checks them
+against the unbounded window on every divisor the probe did decide. On a
+loaded shared machine, `carrier_ladder(300000)` has been read in under a
+minute of wall clock and `2000` in under a second; those are measurements of a
+machine and not properties of the reader, and the figure that repeats is the
+ratio, not either number.
 
 Two readers now disagree in *two distinct ways*, and `carrier-law` keeps them
 apart, because only one of them is the theorem failing. A divisor the grids carry
@@ -1327,7 +1367,9 @@ Measured to `600`: `45` gaps of `599` divisors, all of them multiples of six,
 (`8.2` per cent), first six gaps `30, 42, 60, 66, 78, 102`, again every gap a
 multiple of six and no window empty, widest `[1, 1824]` at `2999`, in `18 s`. To
 `10000`: `823` of `9999`, first two outside the multiples of six `3465` and
-`4095`, largest least-cofactor `6` at the witness `4620`, in `47 min`.
+`4095`, largest least-cofactor `6` at the witness `4620`, in `47 min` of wall
+clock on this shared machine (the same read has taken a third of that on an idle
+one, so the figure dates the run and does not describe the reader).
 
 Two consequences, and they point in opposite directions.
 
@@ -1353,7 +1395,10 @@ The `largest cofactor` line is a horizon fact too, and its own staircase keeps
 climbing: the least cofactor a carried divisor needs is `1, 2, 3, 4, 5, 6` at
 `a = 2, 6, 84, 90, 1848, 4620`, so a census that read `4` to `600` as a ceiling
 would be wrong at `1848` and the one that read `5` to `3000` would be wrong at
-`4620`. No cofactor bound is assumed anywhere: `_least_carrier_cofactor` walks
+`4620`. Rung `6` is where the climb stops to `300000` -- `108` divisors stand on
+it and none stand above it -- and `carrier_ladder` is the read that says so in
+one call, naming which rung the horizon reached and how many names it holds
+there. No cofactor bound is assumed anywhere: `_least_carrier_cofactor` walks
 the window until it finds the hit or reaches the end of it.
 
 #### Cofactor two is the one cofactor a theorem decides
@@ -1973,10 +2018,11 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 494 tests
-exact-lattice-quantiles --self-test           # 133 checks, RC 0
+python -m unittest discover -s tests -t .     # 498 tests
+exact-lattice-quantiles --self-test           # 136 checks, RC 0
 exact-lattice-quantiles median-oracle --max-period 6000    # 0 splits, RC 0
 exact-lattice-quantiles carrier-law --max-divisor 3000     # 245 gaps of 2999, RC 0
+exact-lattice-quantiles carrier-law --max-divisor 6000     # rungs 1..6, 2 names on the top, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,
