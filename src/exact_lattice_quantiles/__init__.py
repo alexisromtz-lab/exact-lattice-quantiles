@@ -33,7 +33,8 @@ dependencies.
 from __future__ import annotations
 
 from .arithmetic import (divisors, dropped_primes, euler_phi, mass,
-                         prime_factorization, prime_product, primes_of, radical)
+                         prime_factorization, prime_product, primes_of, radical,
+                         totient_sum)
 from .ceiling import (Ceiling, InfeasibleAboveInstanceCeiling,
                       OddPeriodUnsupported, ceiling_by_product,
                       ceiling_by_scan, ceiling_census, instance_ceiling)
@@ -51,7 +52,9 @@ from .pricing import (PriceFormCensus, antichain_saving_ceiling,
                       block_defect, block_dominance_census, block_fee,
                       block_fee_closed, block_free, block_of, block_saving,
                       band_slack, band_window, carrier_block_of,
-                      carrier_block_saving, carrier_cofactors, carrier_image,
+                      carrier_block_saving, carrier_cofactor_window,
+                      carrier_cofactors, carrier_image, carrier_image_by_law,
+                      carrier_image_census,
                       carrier_law_census, carrier_universe_by_law,
                       in_carrier_universe,
                       cofactor_block, crossing_scalars, exactness_frontier,
@@ -73,7 +76,7 @@ from .solve import (OK, PROBES_INSUFFICIENT, UNDERCOVERED,
                     InfeasibleWithinBudget, Schedule, ladder,
                     solve_lattice_schedule)
 
-__version__ = "0.23.0"
+__version__ = "0.24.0"
 
 __all__ = [
     "Ceiling",
@@ -96,7 +99,10 @@ __all__ = [
     "carrier_universe_by_law",
     "in_carrier_universe",
     "carrier_law_census",
+    "carrier_cofactor_window",
     "carrier_image",
+    "carrier_image_by_law",
+    "carrier_image_census",
     "scaling_margin",
     "crossing_scalars",
     "scaling_census",
@@ -158,6 +164,7 @@ __all__ = [
     "exactness_frontier",
     "dropped_primes",
     "euler_phi",
+    "totient_sum",
     "grids",
     "instance_ceiling",
     "margin_under_drift",

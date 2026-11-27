@@ -20,16 +20,21 @@ import contextlib
 import io
 import json
 import unittest
+from fractions import Fraction
 from unittest import mock
 
 from itertools import combinations
 
 from exact_lattice_quantiles import (arity_ladder_census, block_advantage,
                                      block_defect, block_fee, block_fee_closed,
-                                     block_free, carrier_cofactors,
-                                     carrier_image, carrier_law_census,
+                                     block_free, carrier_cofactor_window,
+                                     carrier_cofactors, carrier_image,
+                                     carrier_image_by_law,
+                                     carrier_image_census,
+                                     carrier_law_census,
                                      carrier_universe_by_law, carriers,
                                      cofactor_block, crossing_scalars,
+                                     euler_phi,
                                      fee_frontier_by_blocks,
                                      fee_frontier_census, free_margin,
                                      free_margin_census, free_margin_cross,
@@ -667,6 +672,95 @@ class TheCarrierLaw(unittest.TestCase):
                              tuple(q for q in range(1, 17)
                                    if (q * a) % 2 == 0
                                    and a in carriers(q * a)))
+
+
+class TheCarrierWindow(unittest.TestCase):
+    """The cofactors that can carry ``a``, read off ``a`` and proved.
+
+    ``carrier_image`` needed a grid limit because it reads the grids; the
+    window makes that limit unnecessary, because whatever carries ``a`` has a
+    cofactor inside a range that depends on ``a`` alone.  What is under test is
+    that the range is a *theorem*: nothing outside it ever carries, and nothing
+    inside it that carries is missed.
+    """
+
+    def test_the_window_is_the_sweep(self):
+        for a in range(2, 241):
+            self.assertEqual(
+                carrier_cofactors(a),
+                tuple(q for q in range(1, 61)
+                      if (q * a) % 2 == 0 and a in carriers(q * a)),
+                f"a = {a}")
+
+    def test_the_bound_is_attained_so_a_alone_cannot_lower_it(self):
+        """``a = 2`` needs cofactor ``2``, which is the ceiling ``2 phi(2) / 2``:
+        the upper bound is reached, so no argument reading only ``a`` sharpens
+        it.  Lower it and ``2`` leaves its own image."""
+        floor, ceiling = carrier_cofactor_window(2)
+        self.assertEqual((floor, ceiling), (1, 2))
+        self.assertIn(ceiling, carrier_cofactors(2))
+        self.assertIn(2, carriers(2 * ceiling))
+
+    def test_a_power_of_two_carries_itself_at_cofactor_one(self):
+        """The tie: when four divides the grid and the mass *meets* the middle,
+        the divisor that straddles it carries too.  Reading the floor as a
+        strict successor drops ``q = 1`` here, which is how this window was
+        first written and wrong."""
+        for a in (4, 8, 16, 32, 64, 128, 256, 512):
+            self.assertEqual(carrier_cofactor_window(a)[0], 1)
+            self.assertIn(1, carrier_cofactors(a))
+            self.assertIn(a, carriers(a))
+
+    def test_the_complement_is_not_sized_by_a_over_phi(self):
+        """``a / phi(a)`` cannot name the uncarried divisors: ``210`` has ratio
+        ``4.375`` and ``630`` carries it at cofactor ``3``, while ``30`` sits at
+        ``3.75`` and no grid carries it at all.  The complement is a
+        measurement, and this is the measurement refusing a closed form."""
+        self.assertEqual(Fraction(210, euler_phi(210)), Fraction(35, 8))
+        self.assertEqual(Fraction(30, euler_phi(30)), Fraction(15, 4))
+        self.assertIn(210, carriers(3 * 210))
+        self.assertIn(3, carrier_cofactors(210))
+        self.assertNotIn(30, carrier_image_by_law(300)["least_cofactor"])
+        self.assertTrue(all(a % 2 == 0
+                            for a in carrier_image_by_law(300)["absent"]))
+
+    def test_the_image_by_law_needs_no_limit_and_matches_the_grids(self):
+        census = carrier_image_census(300)
+        self.assertEqual(census["missed_by_law"], ())
+        self.assertEqual(census["missed_by_grids"], ())
+        self.assertEqual(census["by_law"]["absent"],
+                         carrier_image(300)["absent"])
+        self.assertIn("no limit", census["verdict"])
+
+    def test_a_short_window_is_reported_as_the_theorem_failing(self):
+        """The falsifier, mechanised: pretend the window misses the last
+        cofactor and the census must say *the window is short*, not *the limit
+        is short* -- one of those two is the law being wrong."""
+        real = carrier_image_by_law
+
+        def crippled(max_divisor: int = 1000) -> dict:
+            full = real(max_divisor)
+            least = dict(full["least_cofactor"])
+            least.pop(6)
+            return {**full, "least_cofactor": least,
+                    "absent": full["absent"] + (6,),
+                    "carriers_measured": full["carriers_measured"] - 1}
+
+        with mock.patch("exact_lattice_quantiles.pricing.carrier_image_by_law",
+                        crippled):
+            census = carrier_image_census(60)
+        self.assertEqual(census["missed_by_law"], (6,))
+        self.assertEqual(census["missed_by_grids"], ())
+        self.assertIn("theorem failing", census["verdict"])
+
+    def test_a_short_grid_limit_is_reported_as_the_measurement_short(self):
+        """And the other direction: a law-correct set against grids read only
+        to the largest divisor must read as the *limit* being short, because
+        ``180`` is carried at ``720`` and the grids never saw it."""
+        census = carrier_image_census(300, grid_limit=300)
+        self.assertEqual(census["missed_by_law"], ())
+        self.assertIn(180, census["missed_by_grids"])
+        self.assertIn("grid limit is short", census["verdict"])
 
 
 class TheScalarLaw(unittest.TestCase):

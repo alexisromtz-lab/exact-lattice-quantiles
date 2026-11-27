@@ -1111,10 +1111,14 @@ $ exact-lattice-quantiles carrier-law
 carrier-law: U(T) read by the divisor, and the divisors no grid carries
   periods read twice      600             every even period to 1200
   splits                  0               none, the two routes agree
-  carriers measured       922             divisors to 1000 that some even grid to 20000 carries
+  carriers measured       922             divisors to 1000 that some even grid carries, by window and not by limit
+  largest cofactor        4               no carried divisor to this horizon needs more
   no grid carries         77              30, 42, 60, 66, 78, 102, 114, 120
+  cross-check             20000           grids read to this cofactor, against the window
+    window short at       nowhere         the theorem holds
+    limit short at        nowhere         the grids reached every one
   verdict  the divisors and the grids name the same universe on all 600 even periods to 1200
-  verdict  77 of the 999 divisors to 1000 are no even grid's median below 20000, so no period carries them
+  verdict  the window and the grids name the same 77 uncarried divisors to 1000, and the law needs no limit to do it
 ```
 
 Two facts, and the second one is the useful one. The routes agree on all **2000**
@@ -1125,6 +1129,51 @@ there are `77` such divisors, and every one of them is even. The three periods
 where the *divisor* universe touches the free line -- `30`, `858`, `1722` -- are
 all in that list, as is `60`, where the carrier universe touches. The line is
 where a divisor is not carried.
+
+#### A grid limit was never needed: it was a window
+
+Reading the image backwards said *which* divisors are uncarried but still swept
+the grids forwards to find out, and a sweep needs a horizon -- the v0.23.0
+report literally named `20 * max_divisor` and left the rest unmeasured. The
+horizon can be replaced by a theorem, because the median of `M = q * a` is a
+running sum of the mass and two sums bracket it:
+
+- *everything below `a` falls short of the middle*, so `cum(a-) <= M / 2`; every
+  divisor of `a` but `a` itself divides `M` and lies below `a`, so
+  `cum(a-) >= a - mass(a)`, hence `q >= 2 (a - mass(a)) / a`;
+- *the middle is reached at or before `a`*, so `M / 2 <= cum(a)`, and `cum(a)`
+  sums a subset of the integers up to `a`, hence `q <= 2 Phi(a) / a`.
+
+Neither bound mentions `T`, a grid or a cofactor beyond `q`, so whatever carries
+`a` carries it inside **one window read off `a` alone** -- and the window is
+tight: at `a = 2` it is `[1, 2]` and the ceiling is attained, so no argument
+reading only `a` lowers it. The floor is a ceiling and not a strict successor
+because of the tie: when `4` divides `M` and the mass lands exactly on the
+middle, the divisor straddling it carries too, which is where `q = 1` survives
+for every power of two. Read strictly, that tie drops `4`, `8`, `16`, ... from
+their own image -- how the window was first written, and wrong.
+
+What the theorem buys is that the second list stops depending on a horizon:
+
+```
+$ exact-lattice-quantiles carrier-law --max-divisor 2000
+  carriers measured       1838            divisors to 2000 that some even grid carries, by window and not by limit
+  largest cofactor        5               no carried divisor to this horizon needs more
+```
+
+Two readers now disagree in *two distinct ways*, and `carrier-law` keeps them
+apart, because only one of them is the theorem failing. A divisor the grids carry
+and the window calls absent is the window missing a cofactor: `RC 1`, and no
+wider sweep repairs it. A divisor the window carries and the grids miss is the
+grid limit being short: the measurement had not looked far enough, and the law
+was right. `tests/test_fee_law.py::TheCarrierWindow` mechanises both directions --
+it cripples the window by one cofactor and asserts the census says *the theorem
+failing*, not *the limit short*.
+
+And the complement is **not** characterized by `a / phi(a)`. `210` has ratio
+`4.375` and `630` carries it at cofactor `3`; `30` sits at `3.75` and no grid
+carries it at all. So the uncarried divisors are a measurement and not a closed
+form, and the package says so instead of guessing one.
 
 That is what turns the scales of the Giuga triple from a sweep into a law. The
 margin is not the question, because it is closed: `margin(kA) = k - [k odd]`,
@@ -1686,8 +1735,8 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 447 tests
-exact-lattice-quantiles --self-test           # 121 checks, RC 0
+python -m unittest discover -s tests -t .     # 454 tests
+exact-lattice-quantiles --self-test           # 124 checks, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,

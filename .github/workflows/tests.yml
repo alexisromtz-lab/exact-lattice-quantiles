@@ -43,6 +43,9 @@ jobs:
           exact-lattice-quantiles universes --max-period 400
           exact-lattice-quantiles drift 180 --max-cost 64 --probes 4
           exact-lattice-quantiles solve 180 --max-cost 64 --probes 4 --min-margin 1/3
+          exact-lattice-quantiles carrier-law --max-divisor 400
+          exact-lattice-quantiles carrier-law --max-divisor 400 --no-cross-check
+          exact-lattice-quantiles scalar-law --max-period 1200
           exact-lattice-quantiles verify-acta src/exact_lattice_quantiles/manifests/acta_margen_secciones_20261125.json
       - name: The shipped manifest survives installation
         run: |

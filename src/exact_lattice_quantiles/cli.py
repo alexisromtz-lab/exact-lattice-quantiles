@@ -35,7 +35,7 @@ from .coverage import (coverage_census, coverage_kernel, design_law, drift_law,
                        margin_under_drift, minimum_cost_design,
                        witness_margin)
 from .arithmetic import primes_of
-from .lattice import (TABLE_BUDGET, MaskTableTooLarge, cell_widths,
+from .lattice import (TABLE_BUDGET, MaskTableTooLarge, carriers, cell_widths,
                       grids, mask_table, period_of, universe)
 from .pricing import (antichain_saving_ceiling, arity_ladder_census, band_slack,
                       band_window,
@@ -44,7 +44,9 @@ from .pricing import (antichain_saving_ceiling, arity_ladder_census, band_slack,
                       block_fee, block_fee_closed, block_free,
                       block_of, block_saving,
                       carrier_block_of, carrier_block_saving,
-                      carrier_image, carrier_law_census, cofactor_block,
+                      carrier_cofactor_window, carrier_cofactors,
+                      carrier_image, carrier_image_by_law,
+                      carrier_image_census, carrier_law_census, cofactor_block,
                       crossing_scalars,
                       free_margin, free_margin_census, free_margin_cross,
                       excess_parity, exactness_frontier, extremal_census,
@@ -1428,6 +1430,15 @@ def _self_test() -> int:
     check("the periods where the divisor universe touches the line are "
           "carried by no grid",
           {30, 858} <= set(carrier_image(900)["absent"]), True)
+    window = carrier_image_census(240)
+    check("and the window names that set with no grid limit at all",
+          (window["missed_by_law"], window["missed_by_grids"],
+           carrier_cofactor_window(2)), ((), (), (1, 2)))
+    check("the window holds every even-grid cofactor a plain sweep finds",
+          tuple(a for a in range(2, 121)
+                if carrier_cofactors(a) != tuple(
+                    q for q in range(1, 41)
+                    if (q * a) % 2 == 0 and a in carriers(q * a))), ())
     universes = reciprocal_filter_census(400)
     check("every period below one is clean in both universes, not just one",
           (universes["proved"], universes["proved_without_break"]),
@@ -1678,6 +1689,10 @@ def build_parser() -> argparse.ArgumentParser:
              "divisors that no even grid carries and so no period holds")
     p_carrier.add_argument("--max-period", type=int, default=1200)
     p_carrier.add_argument("--max-divisor", type=int, default=1000)
+    p_carrier.add_argument(
+        "--no-cross-check", action="store_true",
+        help="report the window alone: the image by law needs no grid limit, "
+             "so the grids route is a check and not a source")
     p_carrier.add_argument("--json", action="store_true")
 
     p_scalar = sub.add_parser(
@@ -1704,20 +1719,29 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _print_carrier_law(max_period: int, max_divisor: int, as_json: bool) -> int:
+def _print_carrier_law(max_period: int, max_divisor: int, as_json: bool,
+                       cross_check: bool = True) -> int:
     """The universe read by the divisor instead of by the grids, both censused.
 
-    Two claims and two measurements: ``U(T)`` is the set of divisors that some
-    even grid of the period carries (the grids route and the divisor route must
-    name the same set), and a divisor that no even grid carries is in no
-    universe at all.  ``RC_ABOVE_CEILING`` the moment a period splits -- the
-    law is only worth having if it is the same set.
+    Three claims and three measurements: ``U(T)`` is the set of divisors that
+    some even grid of the period carries (the grids route and the divisor route
+    must name the same set); a divisor that no even grid carries is in no
+    universe at all; and that second set is now read off a theorem instead of
+    off a grid limit, so it stops depending on how far the grids were read.
+
+    ``RC_ABOVE_CEILING`` the moment a period splits -- the law is only worth
+    having if it is the same set.
     """
     law = carrier_law_census(max_period)
-    image = carrier_image(max_divisor)
+    image = carrier_image_census(max_divisor) if cross_check else None
+    by_law = image["by_law"] if image else carrier_image_by_law(max_divisor)
     if as_json:
-        print(json.dumps({"universe_law": law, "carrier_image": image},
-                         indent=2, sort_keys=True))
+        payload = {"universe_law": law, "carrier_image": by_law}
+        if image:
+            payload["cross_check"] = {k: image[k] for k in
+                                      ("grid_limit", "missed_by_law",
+                                       "missed_by_grids", "verdict")}
+        print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         def line(label: str, value: str, note: str = "") -> str:
             return f"  {label:<24}{value:<16}{note}"
@@ -1729,18 +1753,39 @@ def _print_carrier_law(max_period: int, max_divisor: int, as_json: bool) -> int:
         print(line("splits", str(len(law["splits"])),
                    "first: " + str(law["splits"][0]["period"])
                    if law["splits"] else "none, the two routes agree"))
-        print(line("carriers measured", str(image["carriers_measured"]),
-                   f"divisors to {image['max_divisor']} that some even grid "
-                   f"to {image['grid_limit']} carries"))
-        print(line("no grid carries", str(len(image["absent"])),
-                   ", ".join(str(a) for a in image["absent"][:8]) or "none"))
+        print(line("carriers measured", str(by_law["carriers_measured"]),
+                   f"divisors to {by_law['max_divisor']} that some even grid "
+                   f"carries, by window and not by limit"))
+        print(line("largest cofactor", str(by_law["max_cofactor"]),
+                   "no carried divisor to this horizon needs more"))
+        print(line("no grid carries", str(len(by_law["absent"])),
+                   ", ".join(str(a) for a in by_law["absent"][:8]) or "none"))
+        if image:
+            print(line("cross-check", str(image["grid_limit"]),
+                       "grids read to this cofactor, against the window"))
+            print(line("  window short at",
+                       str(image["missed_by_law"][:3]) if
+                       image["missed_by_law"] else "nowhere",
+                       "the grids carry it and the window does not"
+                       if image["missed_by_law"] else "the theorem holds"))
+            print(line("  limit short at",
+                       str(image["missed_by_grids"][:3]) if
+                       image["missed_by_grids"] else "nowhere",
+                       "the window carries it and the grids never reached it"
+                       if image["missed_by_grids"] else
+                       "the grids reached every one"))
         print(f"  verdict  {law['verdict']}")
-        print(f"  verdict  {image['verdict']}")
+        print(f"  verdict  {image['verdict'] if image else by_law['verdict']}")
     for split in law["splits"]:
         print(f"SPLIT: period {split['period']} only by the grids "
               f"{split['only_by_grids']}, only by the law "
               f"{split['only_by_law']}", file=sys.stderr)
     if law["splits"]:
+        return RC_ABOVE_CEILING
+    if image and image["missed_by_law"]:
+        print(f"SPLIT: the cofactor window is short at "
+              f"{list(image['missed_by_law'][:5])}, which the grids carry and "
+              f"the window does not", file=sys.stderr)
         return RC_ABOVE_CEILING
     if law["periods_measured"] == 0:
         print(f"NO_MEDIDO: no even period up to {max_period}", file=sys.stderr)
@@ -1858,7 +1903,8 @@ def main(argv: list[str] | None = None) -> int:
                                      args.universe == "reduced", args.json)
         if args.command == "carrier-law":
             return _print_carrier_law(args.max_period, args.max_divisor,
-                                      args.json)
+                                      args.json,
+                                      cross_check=not args.no_cross_check)
         if args.command == "scalar-law":
             return _print_scalar_law(args.max_period, args.json)
         if args.command == "universes":
