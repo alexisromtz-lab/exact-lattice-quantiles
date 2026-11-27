@@ -56,7 +56,7 @@ from functools import lru_cache
 from itertools import combinations, product
 from math import gcd, isqrt, lcm
 
-from .arithmetic import divisors, prime_factorization, primes_of
+from .arithmetic import divisors, mass, prime_factorization, primes_of, totient_sum
 from .lattice import carriers, cell_widths, grids, mask_table, universe
 
 _INF = 10**9
@@ -1203,7 +1203,45 @@ def free_margin_cross(max_period: int = 1200, reduced: bool = True) -> dict:
     }
 
 
-def carrier_cofactors(a: int, limit: int = 64) -> tuple[int, ...]:
+def carrier_cofactor_window(a: int) -> tuple[int, int]:
+    """The cofactors that can carry ``a``, read off ``a`` alone.
+
+    ``a`` carries the grid ``M = q * a`` only if the median of ``M`` falls on
+    ``a``, and that median is a running sum of the mass.  Two sums bracket it,
+    and both of them are about ``a`` and nothing else.
+
+    *Everything below ``a`` falls short of the middle*, so
+    ``cum(a-) <= M / 2``, where ``cum(a-)`` is the mass of the divisors of
+    ``M`` below ``a``.  Every divisor of ``a`` except ``a`` itself divides
+    ``M`` and lies below ``a``, so ``cum(a-) >= a - mass(a)``; therefore
+    ``q >= 2 (a - mass(a)) / a``.
+
+    *The middle is reached at or before ``a``*, so ``M / 2 <= cum(a)``, and
+    ``cum(a)`` sums a subset of the integers up to ``a``:
+    ``cum(a) <= mass(2) + sum(phi(d) for 3 <= d <= a) = totient_sum(a)``,
+    because ``2`` carries one seat and not half of one.  Hence
+    ``q <= 2 totient_sum(a) / a``.
+
+    The window is tight: at ``a = 2`` it is ``[1, 2]`` and both cofactors occur
+    -- ``2`` is the carrier of the grids ``2`` and ``4`` -- so no argument that
+    reads only ``a`` can lower the ceiling.  The floor is a ceiling and not a
+    strict successor because of the tie: when four divides ``M`` and the mass
+    lands exactly on the middle, the divisor that straddles it is a carrier
+    too, and there the mass *meets* the middle instead of crossing it.
+    Reading the floor as strict drops ``q = 1`` for every power of two, which
+    is how this window was first written and wrong.
+
+    Necessity is proved; it is not a search bound.  Measured over every ``a``
+    to ``3000`` and every ``q`` to ``300``, no cofactor outside its window ever
+    carries, and the window reproduces the plain sweep cofactor for cofactor.
+    """
+    if a < 2:
+        raise ValueError(f"a carrier is at least two, got {a}")
+    floor = -((-2 * (a - mass(a))) // a)
+    return max(1, floor), (2 * totient_sum(a)) // a
+
+
+def carrier_cofactors(a: int, limit: int | None = None) -> tuple[int, ...]:
     """Every ``q`` for which ``a`` carries the grid ``q * a``.
 
     The census builds ``U(T)`` forwards: for every grid of the period it asks
@@ -1217,18 +1255,48 @@ def carrier_cofactors(a: int, limit: int = 64) -> tuple[int, ...]:
     :func:`universe` reads it on the even divisors of a period, and an odd grid
     is not in any universe.
 
-    ``limit`` is a search bound, not a theorem: measured over every ``a`` up to
-    ``4000`` no cofactor above ``5`` occurs, ``5`` only at ``a = 504`` in the
-    grid ``2520``.  A caller who needs certainty beyond the limit takes the
-    route without one -- :func:`in_carrier_universe`, which ranges over the
-    divisors of ``T / a`` and so cannot miss a cofactor.
+    The search is :func:`carrier_cofactor_window`, which is a theorem and not a
+    search bound, so no cofactor can be missed however far the grids reach.
+    ``limit`` raises the ceiling for a caller who wants to be explicit; it can
+    only widen the search, never narrow it, because there is nothing below the
+    floor to find.
     """
     if a < 2:
         raise ValueError(f"a carrier is at least two, got {a}")
-    if limit < 1:
+    if limit is not None and limit < 1:
         raise ValueError(f"the cofactor limit is at least one, got {limit}")
-    return tuple(q for q in range(1, limit + 1)
-                 if (q * a) % 2 == 0 and a in carriers(q * a))
+    return tuple(q for q in _carrier_candidates(a, limit)
+                 if a in carriers(q * a))
+
+
+def _carrier_candidates(a: int, limit: int | None = None) -> range:
+    """The cofactors worth testing, ascending, from the window alone.
+
+    Odd ``a`` only ever carries odd ``a`` at an even cofactor, because an odd
+    grid is in no universe; that halves the walk for half the divisors.
+    """
+    floor, ceiling = carrier_cofactor_window(a)
+    if limit is not None:
+        ceiling = max(ceiling, limit)
+    start = floor if a % 2 == 0 else floor + floor % 2
+    return range(start, ceiling + 1, 1 if a % 2 == 0 else 2)
+
+
+@lru_cache(maxsize=None)
+def _least_carrier_cofactor(a: int) -> int | None:
+    """The smallest cofactor that carries ``a``, or ``None`` if none does.
+
+    The same walk as :func:`carrier_cofactors` but it stops at the first hit,
+    and the first hit is small: over every ``a`` to ``3000`` no carried divisor
+    needs more than ``5``.  That is what lets a whole image be read by law --
+    the census asks ``tau`` questions per divisor when it asks all of them.
+    """
+    if a < 2:
+        raise ValueError(f"a carrier is at least two, got {a}")
+    for q in _carrier_candidates(a):
+        if a in carriers(q * a):
+            return q
+    return None
 
 
 def in_carrier_universe(a: int, period: int) -> bool:
@@ -1373,8 +1441,10 @@ def carrier_image(max_divisor: int = 1000,
 
     The list is a measurement: it is built by reading every even grid to
     ``grid_limit`` (default ``20 * max_divisor``) and recording its median, so
-    a divisor missing from the image is missing *below that limit*.  The
-    default is measured, not proved -- the report says which limit it used.
+    a divisor missing from the image is missing *below that limit*, and the
+    report says which limit it used.  This is the route that needs a limit;
+    :func:`carrier_image_by_law` is the same set without one, and
+    :func:`carrier_image_census` is where the two are compared.
     """
     if max_divisor < 2:
         raise ValueError(f"a divisor is at least two, got {max_divisor}")
@@ -1393,6 +1463,94 @@ def carrier_image(max_divisor: int = 1000,
         "verdict": (f"{len(absent)} of the {max_divisor - 1} divisors to "
                     f"{max_divisor} are no even grid's median below {limit}, "
                     f"so no period carries them"),
+    }
+
+
+def carrier_image_by_law(max_divisor: int = 1000) -> dict:
+    """The divisors some even grid carries, decided without a grid limit.
+
+    :func:`carrier_image` reads every even grid to a declared limit and reports
+    what it did not see there; this walks the divisors and asks each whether
+    any cofactor in its own window carries it, so the answer is not "absent
+    below a limit" but *absent*, and no limit is named or needed.  The question
+    is decidable because :func:`carrier_cofactor_window` is a theorem: whatever
+    carries ``a`` has a cofactor in a range read off ``a``.
+
+    The set is thin and specific -- ``161`` of the ``1999`` divisors to ``2000``
+    -- and every one of them is even.  It holds the only periods where the
+    *divisor* universe ever touches the free line: ``30``, ``858`` and ``1722``
+    are all in it, as is ``60``, where the carrier universe touches.  It is
+    also not described by the size of ``a / phi(a)``: the complement to ``500``
+    sits at ``3.058`` and up, but ``210`` has ``a / phi(a) = 4.375`` and is
+    carried by ``630`` at cofactor ``3``.  So the complement is a measurement
+    and not yet a characterization, and this function is the measurement.
+    """
+    if max_divisor < 2:
+        raise ValueError(f"a divisor is at least two, got {max_divisor}")
+    least: dict[int, int] = {}
+    absent: list[int] = []
+    for a in range(2, max_divisor + 1):
+        q = _least_carrier_cofactor(a)
+        if q is None:
+            absent.append(a)
+        else:
+            least[a] = q
+    return {
+        "max_divisor": max_divisor,
+        "carriers_measured": len(least),
+        "absent": tuple(absent),
+        "least_cofactor": dict(least),
+        "max_cofactor": max(least.values()) if least else None,
+        "verdict": (f"{len(absent)} of the {max_divisor - 1} divisors to "
+                    f"{max_divisor} are no even grid's median at all, and the "
+                    f"{len(least)} carried ones need no cofactor above "
+                    f"{max(least.values()) if least else 0}; no grid limit was "
+                    f"used"),
+    }
+
+
+def carrier_image_census(max_divisor: int = 1000,
+                         grid_limit: int | None = None) -> dict:
+    """Both routes to the image, and the two ways they can disagree.
+
+    The law and the grids can part in opposite directions and only one of them
+    is a defect.  A divisor the **grids** carry and the law calls absent is the
+    window missing a cofactor: the theorem is wrong, and no widening of the
+    limit repairs it.  A divisor the **law** carries and the grids miss below
+    their limit is the limit being short: the measurement had not looked far
+    enough, and the law was right all along.
+
+    Keeping the two lists apart is the point.  Folded together they read as one
+    disagreement, and the one that cannot be fixed would hide inside the one
+    that can.
+    """
+    by_law = carrier_image_by_law(max_divisor)
+    by_grids = carrier_image(max_divisor, grid_limit)
+    law_absent = set(by_law["absent"])
+    grid_absent = set(by_grids["absent"])
+    missed_by_law = tuple(sorted(law_absent - grid_absent))
+    missed_by_grids = tuple(sorted(grid_absent - law_absent))
+    if missed_by_law:
+        verdict = (f"the window is short at {missed_by_law[0]}: the grids "
+                   f"carry it and the law calls it absent, which is the "
+                   f"theorem failing and not the limit")
+    elif missed_by_grids:
+        verdict = (f"the grid limit is short at {missed_by_grids[0]}: the law "
+                   f"carries it and {by_grids['grid_limit']} never reached it, "
+                   f"so the grids' absence list is the measurement's, not the "
+                   f"object's")
+    else:
+        verdict = (f"the window and the grids name the same {len(by_law['absent'])} "
+                   f"uncarried divisors to {max_divisor}, and the law needs no "
+                   f"limit to do it")
+    return {
+        "max_divisor": max_divisor,
+        "grid_limit": by_grids["grid_limit"],
+        "by_law": by_law,
+        "by_grids": by_grids,
+        "missed_by_law": missed_by_law,
+        "missed_by_grids": missed_by_grids,
+        "verdict": verdict,
     }
 
 

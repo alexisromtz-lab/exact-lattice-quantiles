@@ -73,6 +73,22 @@ def euler_phi(d: int) -> int:
     return res
 
 
+_PHI_PREFIX: list[int] = [0, 1]
+
+
+def totient_sum(n: int) -> int:
+    """``euler_phi(1) + ... + euler_phi(n)``, grown one term at a time.
+
+    The carrier bound asks this once per divisor, so it is kept as a running
+    prefix: a new ``n`` costs one totient, not ``n`` of them.
+    """
+    if n < 1:
+        raise ValueError(f"n must be a positive integer, got {n}")
+    while len(_PHI_PREFIX) <= n:
+        _PHI_PREFIX.append(_PHI_PREFIX[-1] + euler_phi(len(_PHI_PREFIX)))
+    return _PHI_PREFIX[n]
+
+
 @lru_cache(maxsize=None)
 def mass(d: int) -> int:
     """The number of section classes that capture divisor ``d`` in grid ``d``.

@@ -23,7 +23,14 @@ abstract: >-
   fixed block into a law: whether k times a block lands in a universe is decided
   by the carrier grids of its parts and one least common multiple, with no
   period swept, so the periods at which scaled designs clear the free line are
-  named rather than searched.
+  named rather than searched. Carrying is also a two-sided window on the
+  cofactor: whatever seats a divisor a as a median has a cofactor between
+  2 (a - mass(a)) / a and 2 Phi(a) / a, read off a alone, so which divisors are
+  no grid's median at all is decided with no grid built and no horizon named --
+  and the bound is attained, so it cannot be lowered. Two readers therefore
+  disagree in two distinguishable ways, a window that misses a cofactor being a
+  theorem failing and a grid limit being short being a measurement short, and
+  the package reports them separately rather than as one disagreement.
 authors:
   - family-names: "Roman"
     given-names: "Alexis"
@@ -40,5 +47,5 @@ keywords:
   - rational arithmetic
   - divisor lattice
   - Giuga numbers
-version: 0.23.0
-date-released: "2026-11-26"
+version: 0.24.0
+date-released: "2026-11-27"
