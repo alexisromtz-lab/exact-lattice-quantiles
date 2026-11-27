@@ -76,7 +76,7 @@ from .solve import (OK, PROBES_INSUFFICIENT, UNDERCOVERED,
                     InfeasibleWithinBudget, Schedule, ladder,
                     solve_lattice_schedule)
 
-__version__ = "0.24.0"
+__version__ = "0.24.1"
 
 __all__ = [
     "Ceiling",

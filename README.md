@@ -1161,6 +1161,23 @@ $ exact-lattice-quantiles carrier-law --max-divisor 2000
   largest cofactor        5               no carried divisor to this horizon needs more
 ```
 
+**And that `5` is a horizon, not a bound.** The least witness -- the smallest
+cofactor that carries a divisor -- climbs a staircase, and every step is a
+divisor that is the median of exactly *one* grid:
+
+| `a` | 2 | 6 | 84 | 90 | 1848 | 4620 |
+|---|---|---|---|---|---|---|
+| least witness | 1 | 2 | 3 | 4 | 5 | 6 |
+
+`carrier_cofactors(4620)` is `(6,)` inside a window of `[2, 2808]`: one carrier
+grid, `27720`, and that grid is outside the table a `horizon = 20000` read ever
+builds. So the transcript above answers *how far the read went*, never *how far
+the object goes* -- which is why the line says "to this horizon". No even divisor
+below `4620` has witness `6`, and none below `300000` has `7`; the staircase is
+measured, and a measurement is exactly what a bound is not. The proof of the
+window does not depend on it: the window is read off `a` alone and holds whether
+the witness is `2` or `6`.
+
 Two readers now disagree in *two distinct ways*, and `carrier-law` keeps them
 apart, because only one of them is the theorem failing. A divisor the grids carry
 and the window calls absent is the window missing a cofactor: `RC 1`, and no
@@ -1735,7 +1752,7 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 454 tests
+python -m unittest discover -s tests -t .     # 455 tests
 exact-lattice-quantiles --self-test           # 124 checks, RC 0
 ```
 
