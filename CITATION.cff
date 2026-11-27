@@ -49,3 +49,16 @@ keywords:
   - Giuga numbers
 version: 0.24.0
 date-released: "2026-11-27"
+identifiers:
+  - type: swh
+    value: "swh:1:rev:09755ab197f150266e1e33fd38c797bdf3b2f362"
+    description: >-
+      Archival revision of v0.24.0 in Software Heritage, verified against the
+      archive's revision API on 2026-11-27.
+  - type: swh
+    value: "swh:1:dir:339aea49c88e34f759bdcf6c9b1b61c22207fcab"
+    description: >-
+      The source directory of that revision, resolved by the archive from the
+      revision above.
+  - type: url
+    value: "https://archive.softwareheritage.org/swh:1:dir:339aea49c88e34f759bdcf6c9b1b61c22207fcab"
