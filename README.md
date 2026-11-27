@@ -1286,6 +1286,68 @@ the first disagreement and `RC 3` on a horizon below `2`; `RC 4` is not
 reachable here, because a grid exists for every even period and so the census
 can never come back empty.
 
+#### A necessary condition that is not a decision procedure, and why that is arithmetic
+
+The carrier cofactor window is a theorem: a divisor `a` is carried by the grid
+`q * a` only if `q` lies in `[⌈2(a - mass(a))/a⌉, ⌊2Φ(a)/a⌋]`, both ends read off
+`a` alone. It is tempting to read it backwards -- *inside the window, therefore
+carried* -- and the backwards reading is false at `a = 30`.
+
+What is worth noticing first is that emptiness was never going to be the
+evidence. `Σ_{d | a} φ(d) = a` puts the floor at most `2` (because
+`a - mass(a) < a`) and the ceiling at least `2` (because `Φ(a)` is a sum that
+already contains `Σ_{d | a} φ(d) = a`), so **`q = 2` is in every window the
+package ever builds**, for every `a ≥ 2`. A census reporting `0` empty windows
+is reporting arithmetic, not a near miss.
+
+The informative count is the **gap**: divisors whose window is nonempty and none
+of whose cofactors inside it carries them. `carrier_window_census` measures it
+against `carriers`, with no grid limit anywhere, and the first member is `30` --
+`carriers(30) = (15,)`, so `30` is a carrier of nothing, while `carrier_cofactors(30) = ()`
+sits inside `[2, 18]`.
+
+```
+$ exact-lattice-quantiles carrier-law --max-period 600 --max-divisor 600
+carrier-law: U(T) read by the divisor, and the divisors no grid carries
+  periods read twice      300             every even period to 600
+  splits                  0               none, the two routes agree
+  carriers measured       554             divisors to 600 that some even grid carries, by window and not by limit
+  largest cofactor        4               no carried divisor to this horizon needs more
+  no grid carries         45              30, 42, 60, 66, 78, 102, 114, 120
+  window empty            never           sum(phi(d) for d | a) = a keeps q = 2 inside every window
+  in window, uncarried    45              30, 42, 60, 66, 78, 102, 114, 120
+    gap all sixes         yes             every one a multiple of six, no counterexample to 600
+  widest window           599             [1, 365] is 364 cofactors wide
+  ...
+  verdict  the window is necessary and not sufficient: 45 of the 599 divisors
+           to 600 sit in a nonempty window that carries them nowhere, first 30,
+           and every one of them is a multiple of six, so no bound read off a
+           alone decides membership
+```
+
+Measured to `600`: `45` gaps of `599` divisors, all of them multiples of six,
+`0` empty windows, widest window `[1, 365]` at `599`. To `3000`: `245` of `2999`
+(`8.2` per cent), first six gaps `30, 42, 60, 66, 78, 102`, again every gap a
+multiple of six and no window empty, widest `[1, 1824]` at `2999`, in `18 s`.
+
+Two consequences, and they point in opposite directions.
+
+* The window cannot replace the search, so `carrier_cofactors` keeps calling
+  `carriers`: a period census that trusted the window alone would hold `245`
+  divisors that no period holds.
+* The gap is not the evens alone but the **multiples of six**, at every horizon
+  measured, with no counterexample. That is a census claim and not a theorem, and
+  it is stated with its horizon because it has one: `tests/test_carrier_gap.py`
+  pins it to `600` and would report the first counterexample rather than defend
+  the pattern.
+
+The `largest cofactor` line is a horizon fact too, and its own staircase keeps
+climbing: the least cofactor a carried divisor needs is `1, 2, 3, 4, 5, 6` at
+`a = 2, 6, 84, 90, 1848, 4620`, so a census that read `4` to `600` as a ceiling
+would be wrong at `1848` and the one that read `5` to `3000` would be wrong at
+`4620`. No cofactor bound is assumed anywhere: `_least_carrier_cofactor` walks
+the window until it finds the hit or reaches the end of it.
+
 #### The fee of a block is not a search: it is half its defect
 
 `block_advantage` is affine in the fee with slope `n - 1`, so inverting it is one
@@ -1809,9 +1871,10 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 467 tests
-exact-lattice-quantiles --self-test           # 125 checks, RC 0
+python -m unittest discover -s tests -t .     # 479 tests
+exact-lattice-quantiles --self-test           # 127 checks, RC 0
 exact-lattice-quantiles median-oracle --max-period 6000    # 0 splits, RC 0
+exact-lattice-quantiles carrier-law --max-divisor 3000     # 245 gaps of 2999, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,
