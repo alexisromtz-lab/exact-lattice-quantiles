@@ -47,7 +47,7 @@ keywords:
   - rational arithmetic
   - divisor lattice
   - Giuga numbers
-version: 0.24.1
+version: 0.25.0
 date-released: "2026-11-27"
 identifiers:
   - type: swh
