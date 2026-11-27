@@ -1287,9 +1287,18 @@ def _least_carrier_cofactor(a: int) -> int | None:
     """The smallest cofactor that carries ``a``, or ``None`` if none does.
 
     The same walk as :func:`carrier_cofactors` but it stops at the first hit,
-    and the first hit is small: over every ``a`` to ``3000`` no carried divisor
-    needs more than ``5``.  That is what lets a whole image be read by law --
-    the census asks ``tau`` questions per divisor when it asks all of them.
+    and the first hit is small -- small enough that reading a whole image by
+    law costs one hit per divisor instead of ``tau``.  "Small" is measured and
+    not assumed, and the measurement has already moved once: the least witness
+    climbs a staircase of divisors that are the median of exactly *one* grid,
+
+        ``a``      2      6     84     90     1848      4620
+        witness    1      2      3      4        5         6
+
+    and every step is a single element of its own window (``carrier_cofactors``
+    of ``4620`` is ``(6,)`` inside ``[2, 2808]``).  A horizon that stops short
+    of ``4620`` sees ``5`` and no more; this function is the read that does not
+    stop, so it is the one that notices.
     """
     if a < 2:
         raise ValueError(f"a carrier is at least two, got {a}")
@@ -1416,9 +1425,12 @@ def _cofactors_below(horizon: int) -> dict[int, tuple[int, ...]]:
     one: ``a in carriers(M)`` is not monotone in ``M``, so the least grid that
     carries ``a`` is not enough to decide a period.
 
-    Measured over ``horizon = 20000``: the largest cofactor that occurs is
-    ``5``, at ``a = 504`` in the grid ``2520``.  That is a measurement and not
-    a bound, so no caller is allowed to prune on it.
+    Measured over ``horizon = 20000``: the largest cofactor *this table builds*
+    is ``5``, at ``a = 504`` in the grid ``2520``.  The table caps itself and
+    the object does not: a full-window read finds ``6`` at ``a = 4620``, whose
+    only carrier grid is ``27720`` and so never enters a table that stops at
+    ``20000``.  That is a measurement of the truncation and not a bound on the
+    divisor, so no caller is allowed to prune on it.
     """
     table: dict[int, list[int]] = {}
     for M in range(2, horizon + 1, 2):

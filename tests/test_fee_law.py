@@ -41,7 +41,9 @@ from exact_lattice_quantiles import (arity_ladder_census, block_advantage,
                                      grids, in_carrier_universe,
                                      scaling_census, scaling_margin, universe)
 from exact_lattice_quantiles.cli import main
-from exact_lattice_quantiles.pricing import _best_margin
+from exact_lattice_quantiles.pricing import (_best_margin,
+                                             _cofactors_below,
+                                             _least_carrier_cofactor)
 
 
 class TheFeeOfABlock(unittest.TestCase):
@@ -752,6 +754,24 @@ class TheCarrierWindow(unittest.TestCase):
         self.assertEqual(census["missed_by_law"], (6,))
         self.assertEqual(census["missed_by_grids"], ())
         self.assertIn("theorem failing", census["verdict"])
+
+    def test_the_witness_staircase_climbs_past_five(self):
+        """The least cofactor that carries a divisor is small, and "small" is a
+        measurement that has already moved.  ``4620`` is carried by the grid
+        ``27720`` and by no smaller one, so a claim of ``5`` read off a table
+        that stops below it is a horizon and not a bound.  Each step of this
+        staircase is a divisor with exactly one carrier cofactor in its whole
+        window."""
+        staircase = ((2, 1), (6, 2), (84, 3), (90, 4), (1848, 5), (4620, 6))
+        for a, witness in staircase:
+            with self.subTest(a=a):
+                self.assertEqual(_least_carrier_cofactor(a), witness)
+                floor, ceiling = carrier_cofactor_window(a)
+                self.assertLessEqual(floor, witness)
+                self.assertLessEqual(witness, ceiling)
+        self.assertEqual(carrier_cofactors(4620), (6,))
+        self.assertNotIn(4620, _cofactors_below(20000))
+        self.assertIn(6, _cofactors_below(27720)[4620])
 
     def test_a_short_grid_limit_is_reported_as_the_measurement_short(self):
         """And the other direction: a law-correct set against grids read only
