@@ -105,6 +105,43 @@ def mass(d: int) -> int:
 
 
 @lru_cache(maxsize=None)
+def odd_part(n: int) -> int:
+    """``n`` with every factor of two taken out.
+
+    The cofactor-two law splits by parity, and the even half of it depends on
+    ``n`` only through its odd part: doubling or halving a number moves which
+    divisors of ``2n`` fall below ``n``, but never the totient ratio that
+    decides the comparison.
+    """
+    if n < 1:
+        raise ValueError(f"n must be a positive integer, got {n}")
+    while n % 2 == 0:
+        n //= 2
+    return n
+
+
+@lru_cache(maxsize=None)
+def upper_half_mass(n: int) -> int:
+    """The mass of the divisors of ``n`` at or above half of ``n``.
+
+    ``sum(phi(d) for d | n) == n`` always, so this and
+    :func:`lower_half_mass` are the two halves of ``n`` and not two readings of
+    it: ``upper_half_mass(n) + lower_half_mass(n) == n`` to the unit.  ``n = 1``
+    is the degenerate case that keeps both identities honest -- its only
+    divisor is at or above half of itself, so the upper half is all of it.
+    """
+    if n < 1:
+        raise ValueError(f"n must be a positive integer, got {n}")
+    return sum(euler_phi(d) for d in divisors(n) if 2 * d >= n)
+
+
+@lru_cache(maxsize=None)
+def lower_half_mass(n: int) -> int:
+    """The mass of the divisors of ``n`` strictly below half of ``n``."""
+    return n - upper_half_mass(n)
+
+
+@lru_cache(maxsize=None)
 def dropped_primes(period: int, d: int) -> tuple[int, ...]:
     """The primes of ``period`` that ``d`` does not have.
 

@@ -34,7 +34,7 @@ from .coverage import (coverage_census, coverage_kernel, design_law, drift_law,
                        drift_radius, drift_tolerance, guaranteed_margin,
                        margin_under_drift, minimum_cost_design,
                        witness_margin)
-from .arithmetic import primes_of
+from .arithmetic import lower_half_mass, primes_of, upper_half_mass
 from .lattice import (TABLE_BUDGET, MaskTableTooLarge, carriers, cell_widths,
                       grids, mask_table, median_oracle_census, period_of,
                       universe)
@@ -48,6 +48,7 @@ from .pricing import (antichain_saving_ceiling, arity_ladder_census, band_slack,
                       carrier_cofactor_window, carrier_cofactors,
                       carrier_image, carrier_image_by_law,
                       carrier_image_census, carrier_law_census,
+                      carrier_two_census, carrier_two_law,
                       carrier_window_census, cofactor_block,
                       crossing_scalars,
                       free_margin, free_margin_census, free_margin_cross,
@@ -1452,6 +1453,22 @@ def _self_test() -> int:
           (gaps["gap"][0], gaps["gap_all_multiples_of_six"],
            carrier_cofactor_window(30), carrier_cofactors(30)),
           (30, True, (2, 18), ()))
+    check("cofactor two is a comparison on the divisor, not a search on grids",
+          [a for a in range(2, 601) if carrier_two_law(a)
+           != (a in carriers(2 * a))], [])
+    check("with equality counted as a hit, which is the tie at 18 on 36",
+          (carrier_two_law(18), 18 in carriers(36), carrier_two_law(30)),
+          (True, True, False))
+    check("and no prime above three reaches the upper half it needs",
+          [a for a in (30, 42, 66, 78, 858, 6 * 499) if carrier_two_law(a)], [])
+    twos = carrier_two_census(600)
+    check("so the gap sits inside the two-gap and not the other way round",
+          (set(gaps["gap"]) <= set(twos["two_gap"]),
+           sorted(set(twos["two_gap"]) - set(gaps["gap"]))[:3]),
+          (True, [84, 90, 105]))
+    check("the two halves of a totient sum are the number itself",
+          [n for n in range(1, 601)
+           if upper_half_mass(n) + lower_half_mass(n) != n], [])
     universes = reciprocal_filter_census(400)
     check("every period below one is clean in both universes, not just one",
           (universes["proved"], universes["proved_without_break"]),
@@ -1756,9 +1773,10 @@ def _print_carrier_law(max_period: int, max_divisor: int, as_json: bool,
     image = carrier_image_census(max_divisor) if cross_check else None
     by_law = image["by_law"] if image else carrier_image_by_law(max_divisor)
     windows = carrier_window_census(max_divisor)
+    twos = carrier_two_census(max_divisor)
     if as_json:
         payload = {"universe_law": law, "carrier_image": by_law,
-                   "cofactor_window": windows}
+                   "cofactor_window": windows, "cofactor_two": twos}
         if image:
             payload["cross_check"] = {k: image[k] for k in
                                       ("grid_limit", "missed_by_law",
@@ -1794,6 +1812,15 @@ def _print_carrier_law(max_period: int, max_divisor: int, as_json: bool,
                    f"{windows['max_divisor']}"
                    if windows["gap_all_multiples_of_six"] else
                    "the gap is not the even divisors alone"))
+        print(line("cofactor two",
+                   f"{len(twos['decided'])} of {twos['divisors_read']}",
+                   "decided by the half-mass comparison, no grid built"))
+        print(line("  two-gap", str(len(twos["two_gap"])),
+                   ", ".join(str(a) for a in twos["two_gap"][:8]) or "none"))
+        print(line("  coprime to six",
+                   f"{twos['coprime_to_six_decided']} of "
+                   f"{twos['coprime_to_six']}",
+                   "cofactor two settles every divisor coprime to six"))
         print(line("widest window",
                    str(windows["widest_window"]["a"]),
                    f"[{windows['widest_window']['floor']}, "
@@ -1816,11 +1843,17 @@ def _print_carrier_law(max_period: int, max_divisor: int, as_json: bool,
         print(f"  verdict  {law['verdict']}")
         print(f"  verdict  {image['verdict'] if image else by_law['verdict']}")
         print(f"  verdict  {windows['verdict']}")
+        print(f"  verdict  {twos['verdict']}")
     for split in law["splits"]:
         print(f"SPLIT: period {split['period']} only by the grids "
               f"{split['only_by_grids']}, only by the law "
               f"{split['only_by_law']}", file=sys.stderr)
     if law["splits"]:
+        return RC_ABOVE_CEILING
+    if twos["disagreements"]:
+        print(f"SPLIT: the half-mass comparison is short at "
+              f"{list(twos['disagreements'][:5])}, which the grids carry at "
+              f"cofactor two and the law does not", file=sys.stderr)
         return RC_ABOVE_CEILING
     if image and image["missed_by_law"]:
         print(f"SPLIT: the cofactor window is short at "
