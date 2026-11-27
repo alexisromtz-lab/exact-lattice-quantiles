@@ -36,7 +36,8 @@ from .coverage import (coverage_census, coverage_kernel, design_law, drift_law,
                        witness_margin)
 from .arithmetic import primes_of
 from .lattice import (TABLE_BUDGET, MaskTableTooLarge, carriers, cell_widths,
-                      grids, mask_table, period_of, universe)
+                      grids, mask_table, median_oracle_census, period_of,
+                      universe)
 from .pricing import (antichain_saving_ceiling, arity_ladder_census, band_slack,
                       band_window,
                       block_catalogue,
@@ -1419,6 +1420,10 @@ def _self_test() -> int:
            fee_frontier_by_blocks(180)["frontier"]), (True, 2, 1))
     check("the universe read by the divisor is the universe the grids name",
           carrier_law_census(1200)["splits"], ())
+    third = median_oracle_census(1200)
+    check("a third route that shares only gcd names the same carriers",
+          (third["grid_splits"], third["carrier_splits"],
+           third["universe_splits"]), ((), (), ()))
     check("the crossing scales are forecast, not swept",
           [(row["k"], row["period"], row["margin"])
            for row in crossing_scalars(4001) if row["margin"] > 0],
@@ -1702,6 +1707,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_scalar.add_argument("--max-period", type=int, default=1200)
     p_scalar.add_argument("--json", action="store_true")
 
+    p_median = sub.add_parser(
+        "median-oracle",
+        help="U(T) read a third time: the carrier as the median of the class "
+             "values, on grids built by division")
+    p_median.add_argument("--max-period", type=int, default=1200)
+    p_median.add_argument("--json", action="store_true")
+
     p_univ = sub.add_parser(
         "universes",
         help="census the reciprocal sum against both universes, period by "
@@ -1830,6 +1842,57 @@ def _print_scalar_law(max_period: int, as_json: bool) -> int:
     return RC_OK
 
 
+def _print_median_oracle(max_period: int, as_json: bool) -> int:
+    """``U(T)`` read a third time, from the classes instead of from the mass.
+
+    The two shipped routes both end at :func:`carriers`, so their agreement was
+    never independence: a bias in ``mass`` or in the divisor list would have
+    survived both.  This route sorts the class values and takes the middle, and
+    it builds its grids by division, so the only step left shared with the
+    others is the definition itself.
+
+    A split is a defect in the machinery and not a horizon, so it exits
+    ``RC_ABOVE_CEILING`` and names the grid where the two readings part.
+    """
+    census = median_oracle_census(max_period)
+    if as_json:
+        print(json.dumps(census, indent=2, sort_keys=True))
+    else:
+        def line(label: str, value: str, note: str = "") -> str:
+            return f"  {label:<24}{value:<16}{note}"
+
+        print("median-oracle: U(T) read from the classes, a third time")
+        print(line("periods read", str(census["periods_measured"]),
+                   f"every even period to {census['max_period']}"))
+        print(line("grids read", str(census["grids_measured"]),
+                   "even grids whose carrier is read both ways"))
+        print(line("widest universe", str(census["largest_universe"]),
+                   "carriers in the largest U(T) read"))
+        print(line("grid splits", str(len(census["grid_splits"])),
+                   str(list(census["grid_splits"][:5])) if
+                   census["grid_splits"] else
+                   "trial division and the factorization agree"))
+        print(line("carrier splits", str(len(census["carrier_splits"])),
+                   f"{len(census['carrier_splits'])} grids where the median "
+                   f"and the mass disagree" if census["carrier_splits"] else
+                   "the median of the class values is the mass carrier"))
+        print(line("universe splits", str(len(census["universe_splits"])),
+                   "the same set, period by period" if not
+                   census["universe_splits"] else
+                   f"first at {census['universe_splits'][0][0]}"))
+        print(f"  verdict  {census['verdict']}")
+    for grid, by_median, by_mass in census["carrier_splits"][:5]:
+        print(f"SPLIT: grid {grid} reads {list(by_median)} by the median and "
+              f"{list(by_mass)} by the mass", file=sys.stderr)
+    if census["grid_splits"] or census["carrier_splits"] \
+            or census["universe_splits"]:
+        return RC_ABOVE_CEILING
+    if census["periods_measured"] == 0:
+        print(f"NO_MEDIDO: no even period up to {max_period}", file=sys.stderr)
+        return RC_NO_MEDIDO
+    return RC_OK
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     try:
@@ -1907,6 +1970,8 @@ def main(argv: list[str] | None = None) -> int:
                                       cross_check=not args.no_cross_check)
         if args.command == "scalar-law":
             return _print_scalar_law(args.max_period, args.json)
+        if args.command == "median-oracle":
+            return _print_median_oracle(args.max_period, args.json)
         if args.command == "universes":
             return _print_universes(args.max_period, args.json)
     except MaskTableTooLarge as exc:

@@ -1229,6 +1229,63 @@ at `30`, `858` and `1722`, and `418` crossed periods with `60` at margin `2` on
 was owed on the line -- what was owed was the certificate, and it is now a
 transcript instead of a bound.
 
+#### Three routes to one universe, and the tie is what tells them apart
+
+Everything above rests on `U(T)`, and until v0.25.0 the package read it twice in
+a way that was not independence. `universe` walks the grids and takes the
+carriers; `carrier_universe_by_law` walks the divisors and takes the carriers;
+both end at `carriers`, and `carriers` is one loop that accumulates `mass`
+(`euler_phi`) over `divisors`. A bias in that loop would have travelled with
+both readings and come out looking like agreement: the double reading was
+measuring the same route twice, which is exactly the shared blind spot the
+package had been naming without closing.
+
+So there is a third route, built to share nothing. Class `j` of grid `M` meets
+the divisor `M // gcd(j, M)` -- the phase count the width contract already
+trusts -- so reading the **median of the class values** names the carrier
+without ever touching `mass`, `divisors`, `seats` or a factorization; the grids
+themselves come from trial division instead of from the prime walk. The only
+thing this route shares with the other two is the definition of a carrier.
+
+```
+$ exact-lattice-quantiles median-oracle --max-period 1200
+median-oracle: U(T) read from the classes, a third time
+  periods read            600             every even period to 1200
+  grids read              600             even grids whose carrier is read both ways
+  widest universe         23              carriers in the largest U(T) read
+  grid splits             0               trial division and the factorization agree
+  carrier splits          0               the median of the class values is the mass carrier
+  universe splits         0               the same set, period by period
+  verdict  the median of the class values names every carrier the mass names, over 600 even grids of 600 periods to 1200, so U(T) is a property of the lattice and not of the route that reads it
+```
+
+Two things fall out, and the second is the reason to have built it.
+
+- **`mass` is a theorem about the class map, not an assumption of it.** A
+  divisor `d` appears among the class values of `M` exactly `mass(d) / 2` times,
+  which is why the accumulated mass seats a block of `d` at the middle of the
+  grid. The class route derives that identity on every divisor of every even
+  grid to `360` and then never consults it.
+- **The tie branch is load-bearing, and the universe hides the damage.** Read
+  the median as a single middle value -- the natural wrong reading, since a
+  median usually is one -- and carrier `2` of grid `4`, carrier `4` of grid `8`,
+  and every `4 | M` whose two middle classes differ, drop out. No universe below
+  `36` changes, because other grids of those periods still carry the same
+  divisor: **the union absorbs the mistake**. To `1200` that mutant parts from
+  the mass route on `29` grids, the first at `4`, but on only `33` universes,
+  the first at `36` -- so the universe is the claim and the grid is the
+  instrument, and a census that compared only `U(T)` would have reported
+  agreement on a wrong reading. `tests/test_median_oracle.py` patches the median
+  that way and requires the split to be reported, grid by grid, with `RC 1`.
+
+Measured, `0` splits of any kind to `1200` (600 grids over 600 periods, widest
+universe `23`), to `4001` (2000 and 2000, widest `33`, `1.0 s`) and to `6000`
+(3000 and 3000, widest `42`, `2.3 s`) -- every even grid below each horizon, with
+the grids both ways and the universes period by period. The verb exits `RC 1` on
+the first disagreement and `RC 3` on a horizon below `2`; `RC 4` is not
+reachable here, because a grid exists for every even period and so the census
+can never come back empty.
+
 #### The fee of a block is not a search: it is half its defect
 
 `block_advantage` is affine in the fee with slope `n - 1`, so inverting it is one
@@ -1752,8 +1809,9 @@ located with `Fraction` and confirmed with `int`, floors included.
 ## Verification
 
 ```
-python -m unittest discover -s tests -t .     # 455 tests
-exact-lattice-quantiles --self-test           # 124 checks, RC 0
+python -m unittest discover -s tests -t .     # 467 tests
+exact-lattice-quantiles --self-test           # 125 checks, RC 0
+exact-lattice-quantiles median-oracle --max-period 6000    # 0 splits, RC 0
 ```
 
 The suite anchors each number quoted above to the function that produces it,

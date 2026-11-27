@@ -191,6 +191,54 @@ def carriers(M: int) -> tuple[int, ...]:
     return (carrier,)
 
 
+def class_values(grid: int) -> tuple[int, ...]:
+    """The divisor each class of ``grid`` meets, in class order.
+
+    Class ``j`` meets ``grid // gcd(j, grid)``; that is the whole geometry, and
+    it is available without a seat table, without :func:`mass` and without a
+    totient.  Sorted, the tuple's middle is the carrier -- see
+    :func:`median_carriers`.
+    """
+    if grid < 2:
+        raise ValueError(f"a grid below 2 has no classes, got {grid}")
+    return tuple(grid // math.gcd(j, grid) for j in range(1, grid // 2 + 1))
+
+
+def median_carriers(grid: int) -> tuple[int, ...]:
+    """The carriers of ``grid`` as the median of its class values.
+
+    The third route to the same answer, and the one that shares the least: the
+    mass route accumulates ``euler_phi`` over the divisors, the factorization
+    route walks the primes, and this one sorts the classes and takes the middle
+    -- it depends on ``gcd`` and on nothing else in the package.  A bias in
+    ``mass``, in ``divisors`` or in the seat ordering would travel with both of
+    the other routes and not with this one, so the three together decide
+    whether ``U(T)`` is a property of the lattice or of the way it is read.
+    The phase count ``grid // gcd(j, grid)`` is the referee the width contract
+    already trusts -- ``test_solver_contract.py``, the currency test -- so this
+    is that same referee pointed at the carrier instead of at the block.
+
+    The tie stops being a branch.  A grid with ``4 | grid`` has an even number
+    of classes, so its median sits *between* two of them, and the carriers are
+    the **distinct** values at those two positions: two when they differ and
+    one when they do not, which is exactly what :func:`carriers` spells out.
+
+    An odd grid is refused by name: a section is a position in a phase of
+    ``grid // 2`` classes and an odd grid has no middle one.  The mass route
+    accepts odd grids because the mass never asks for a middle; this one does,
+    so it stops where the geometry stops instead of guessing a convention.
+    """
+    if grid < 2:
+        raise ValueError(f"a grid below 2 has no classes, got {grid}")
+    if grid % 2:
+        raise ValueError(f"the median of a phase needs an even grid, got {grid}")
+    values = sorted(class_values(grid))
+    middle = len(values) // 2
+    if len(values) % 2:
+        return (values[middle],)
+    return tuple(sorted({values[middle - 1], values[middle]}))
+
+
 def period_of(durations: tuple[int, ...] | list[int]) -> int:
     """The period a set of service lengths generates: their least common multiple.
 
@@ -239,6 +287,112 @@ def universe(period: int) -> tuple[int, ...]:
         if M % 2 == 0:
             found.update(carriers(M))
     return tuple(sorted(found))
+
+
+def grids_by_trial(period: int) -> tuple[int, ...]:
+    """Every grid of ``period``, by trying every candidate below it.
+
+    :func:`grids` builds the divisors from the factorization; this one divides.
+    Same set, and the only route in the package that would notice a
+    factorization that lost a prime or an exponent.
+    """
+    if period < 2:
+        raise ValueError(f"a period is at least two, got {period}")
+    return tuple(M for M in range(2, period + 1) if period % M == 0)
+
+
+def universe_by_median(period: int) -> tuple[int, ...]:
+    """``U(period)`` read from the classes, on a grid table built by division.
+
+    The third reading of the same set.  It shares no step with
+    :func:`universe` beyond the definition itself: the grids come from trial
+    division instead of from the factorization, and the carrier of each grid
+    from the median of its class values instead of from accumulated mass.
+    """
+    if period < 2:
+        raise ValueError(f"a period is at least two, got {period}")
+    found: set[int] = set()
+    for M in grids_by_trial(period):
+        if M % 2 == 0:
+            found.update(median_carriers(M))
+    return tuple(sorted(found))
+
+
+def median_oracle_census(max_period: int = 600) -> dict:
+    """Both sets read a third time, on every even period to ``max_period``.
+
+    The package has shipped two routes to ``U(T)`` for three versions and has
+    said, correctly, that they are not independent: both end at
+    :func:`carriers`, so a bias in ``mass`` or in ``divisors`` would survive
+    the double reading and look like agreement.  This is the census that
+    settles it, and it is deliberately built from the cheapest possible
+    machinery -- ``gcd``, a sort and a division -- so that there is nothing
+    left for the two routes to share.
+
+    Both sets are read, not just the universe, and that is not belt and braces:
+    ``U(T)`` is a **union** over the grids, so it absorbs a wrong carrier until
+    a period arrives whose other grids do not repair it.  Read the tie branch
+    out of :func:`median_carriers` and no universe below ``36`` changes -- the
+    grids of ``4``, ``8`` and ``12`` are covered by other grids -- while the
+    grid parts at ``4`` itself.  The universe is the claim; the grid is the
+    instrument.
+
+    A grid is the same object in every period that holds it, so each is read
+    once, and ``grids_measured`` counts distinct grids rather than occurrences.
+    """
+    if max_period < 2:
+        raise ValueError(f"a horizon is at least two, got {max_period}")
+    grid_splits: list[int] = []
+    carrier_splits: list[tuple[int, tuple[int, ...], tuple[int, ...]]] = []
+    universe_splits: list[tuple[int, tuple[int, ...], tuple[int, ...]]] = []
+    periods = grids_read = 0
+    largest_universe = 0
+    for grid in range(2, max_period + 1, 2):
+        grids_read += 1
+        by_median, by_mass = median_carriers(grid), carriers(grid)
+        if by_median != by_mass:
+            carrier_splits.append((grid, by_median, by_mass))
+    for period in range(2, max_period + 1, 2):
+        periods += 1
+        if grids_by_trial(period) != grids(period):
+            grid_splits.append(period)
+        by_median = universe_by_median(period)
+        by_mass = universe(period)
+        largest_universe = max(largest_universe, len(by_mass))
+        if by_median != by_mass:
+            universe_splits.append((period, by_median, by_mass))
+    if grid_splits:
+        verdict = (f"the grids disagree at {grid_splits[0]}: trial division and "
+                   f"the factorization do not name the same set, which is the "
+                   f"factorization failing and not the horizon")
+    elif carrier_splits:
+        grid, by_median, by_mass = carrier_splits[0]
+        verdict = (f"the carriers disagree at grid {grid}: the median of the "
+                   f"class values reads {list(by_median)} and the mass reads "
+                   f"{list(by_mass)}, which is a bias in the mass or in the "
+                   f"divisor list and not a horizon")
+    elif universe_splits:
+        period, by_median, by_mass = universe_splits[0]
+        verdict = (f"the universes disagree at {period}, though no single grid "
+                   f"does, which is a union being read differently and not a "
+                   f"carrier being read differently")
+    elif periods == 0:
+        verdict = "NO_MEDIDO: no even period to read"
+    else:
+        verdict = (f"the median of the class values names every carrier the "
+                   f"mass names, over {grids_read} even grids of {periods} "
+                   f"periods to {max_period}, so U(T) is a property of the "
+                   f"lattice and not of the route that reads it")
+    return {
+        "max_period": max_period,
+        "periods_measured": periods,
+        "grids_measured": grids_read,
+        "largest_universe": largest_universe,
+        "grid_splits": tuple(grid_splits),
+        "carrier_splits": tuple(carrier_splits),
+        "universe_splits": tuple(universe_splits),
+        "verdict": verdict,
+    }
 
 
 @lru_cache(maxsize=None)
