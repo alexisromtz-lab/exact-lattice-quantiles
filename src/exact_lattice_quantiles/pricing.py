@@ -1755,6 +1755,16 @@ def carrier_window_census(max_divisor: int = 3000) -> dict:
     smallest: ``carriers(30)`` is ``(15,)``, so the divisor ``15`` is carried by
     ``30`` and ``30`` is carried by no even grid at all.
 
+    **That last sentence had a horizon and the horizon refuted it.**  Read to
+    ``10000`` the gap has ``823`` divisors and two of them are no multiple of
+    six: ``3465 = 3*3*5*7*11`` and ``4095 = 3*3*5*7*13``, both ``3`` modulo
+    ``6`` and both with ``9`` dividing them.  ``3465`` sits in the window
+    ``[2, 2106]`` and no cofactor in it carries it, which the grids confirm for
+    that one divisor in ``1.4`` to ``1.7 s`` on a loaded machine.  So
+    ``gap_all_multiples_of_six`` is a statement about the
+    horizon it was measured at: the sixes are where the gap *starts* and not
+    where it ends, and what closes a hole is a small cofactor, not parity.
+
     The gap is why :func:`carrier_cofactors` still calls :func:`carriers` -- the
     window narrows the search and cannot replace it -- and why a period census
     that trusted the window alone would hold ``245`` divisors no period holds.
@@ -1782,7 +1792,8 @@ def carrier_window_census(max_divisor: int = 3000) -> dict:
             least[a] = q
     top = max(least.values()) if least else None
     witness = max(sorted(least), key=lambda a: least[a]) if least else None
-    divisible_by_six = not [a for a in gap if a % 6]
+    gap_outside = tuple(a for a in gap if a % 6)
+    divisible_by_six = not gap_outside
     if gap and divisible_by_six:
         verdict = (f"the window is necessary and not sufficient: {len(gap)} of "
                    f"the {max_divisor - 1} divisors to {max_divisor} sit in a "
@@ -1790,12 +1801,14 @@ def carrier_window_census(max_divisor: int = 3000) -> dict:
                    f"{gap[0]}, and every one of them is a multiple of six, so "
                    f"no bound read off a alone decides membership")
     elif gap:
+        outside = len(gap_outside)
         verdict = (f"the window is necessary and not sufficient: {len(gap)} of "
                    f"the {max_divisor - 1} divisors to {max_divisor} sit in a "
                    f"nonempty window that carries them nowhere, first "
-                   f"{gap[0]}, and {len(gap) - sum(a % 6 == 0 for a in gap)} "
-                   f"of them are no multiple of six, so the gap is not the "
-                   f"even divisors alone")
+                   f"{gap[0]}, and {outside} of them "
+                   f"{'is' if outside == 1 else 'are'} no multiple of six, "
+                   f"first {gap_outside[0]}, so the multiples of six are "
+                   f"where the gap starts and not where it ends")
     else:
         verdict = (f"every divisor to {max_divisor} whose window is nonempty "
                    f"is carried inside it, so nothing at this horizon separates "
@@ -1808,6 +1821,7 @@ def carrier_window_census(max_divisor: int = 3000) -> dict:
         "empty_windows": tuple(empty),
         "windows_without_two": tuple(no_two),
         "gap_all_multiples_of_six": divisible_by_six if gap else None,
+        "gap_outside_six": gap_outside,
         "largest_least_cofactor": top,
         "largest_witness": witness,
         "widest_window": widest,
