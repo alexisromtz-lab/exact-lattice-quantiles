@@ -49,6 +49,7 @@ keywords:
   - Giuga numbers
 version: 0.29.0
 date-released: "2026-11-27"
+doi: "10.5281/zenodo.24601553"
 identifiers:
   - type: swh
     value: "swh:1:rev:2251d4e63c6e0867dd6a6b28cb446f7853dea0e8"
@@ -62,3 +63,9 @@ identifiers:
       revision above.
   - type: url
     value: "https://archive.softwareheritage.org/swh:1:dir:3a42ad53f0c006d8f4d6f76cebad37f294f0598f"
+  - type: doi
+    value: "10.5281/zenodo.24547119"
+    description: >-
+      Concept DOI of this software: it always resolves to the most recent
+      deposited version, while the `doi` above names v0.29.0 itself. Both were
+      resolved through doi.org and returned 200 on 2026-11-28.
