@@ -32,7 +32,21 @@ returns it as a `fractions.Fraction`:
 ## Install
 
 ```
+pip install exact-lattice-quantiles
+```
+
+That installs the last release. This page describes `main`, which runs ahead
+of it: `carrier_ladder` arrives with the next release, and until then only the
+tree itself carries it:
+
+```
 pip install git+https://github.com/alexisromtz-lab/exact-lattice-quantiles
+```
+
+A release can also check itself without being installed:
+
+```
+uvx exact-lattice-quantiles --self-test
 ```
 
 Python 3.11+. No dependencies, at runtime or for tests.
